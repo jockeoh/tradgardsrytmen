@@ -141,7 +141,7 @@ def api_items(request):
 def api_item(request, item_id):
     item = get_object_or_404(GardenItem, pk=item_id, active=True)
     if request.method == "GET":
-        return JsonResponse({"item": _item_json(item, True), "proposals": [_plan_json(p.plan) for p in item.proposals.filter(status="pending")]})
+        return JsonResponse({"item": _item_json(item, True), "proposals": [_plan_json(p.plan) for p in item.proposals.filter(status="pending").order_by("-plan__version")]})
     data = _json_body(request) or {}
     for field in ["name", "canonical_name", "aliases", "category", "kind", "cultivar", "quantity", "age_stage", "location", "notes"]:
         if field in data:

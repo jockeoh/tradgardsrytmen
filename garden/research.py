@@ -105,6 +105,10 @@ def create_research_proposal(item, garden, response_payload=None):
     required_task = {"title", "category", "instructions", "cadence", "start_month", "end_month", "conditional", "evidence_conflict", "source_urls"}
     if set(result) != required_top or not isinstance(result["tasks"], list) or any(set(task) != required_task or task["cadence"] not in {"one_off", "seasonal", "monthly"} or not 1 <= task["start_month"] <= 12 or not 1 <= task["end_month"] <= 12 for task in result["tasks"]):
         raise ResearchError("AI-svaret följde inte det strikta schemat.")
+    replaced_at = timezone.now()
+    older_pending = ResearchProposal.objects.filter(item=item, status="pending")
+    CarePlanVersion.objects.filter(proposal__in=older_pending).update(status="superseded", reviewed_at=replaced_at)
+    older_pending.update(status="superseded", reviewed_at=replaced_at)
     consulted = {}
     for source in raw_sources:
         url = source.get("url", "")

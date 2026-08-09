@@ -1,4 +1,4 @@
-const state = { data: null, view: "month", searchTimer: null };
+const state = { data: null, view: "month", searchTimer: null, openItem: null };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 
@@ -48,7 +48,7 @@ function renderTasks(groups) {
 
 function plantRow(item) {
   const glyphs = {apple:"●",plum:"●",berry:"✣",rose:"✿",hedge:"▥",tomato:"◉",leaf:"♧"};
-  const meta = [item.category, item.cultivar, item.quantity > 1 ? `${item.quantity} st` : ""].filter(Boolean).join(" · ");
+  const meta = [item.cultivar ? `Sort: ${item.cultivar}` : "Sort ej angiven", item.category, item.quantity > 1 ? `${item.quantity} st` : ""].filter(Boolean).join(" · ");
   return `<button class="plant-row" data-open-item="${item.id}"><span class="plant-icon">${glyphs[item.icon] || "♧"}</span><span><strong>${escapeHtml(item.name)}</strong><span>${escapeHtml(meta || "Lägg till detaljer")}</span></span></button>`;
 }
 
@@ -111,13 +111,42 @@ async function openItem(id) {
   content.innerHTML = `<div class="loading-state"><span class="spinner"></span></div>`; dialog.showModal();
   try {
     const data = await api(`/api/items/${id}/`), item = data.item, proposal = data.proposals?.[0], plan = proposal || item.plan;
-    const meta = [item.category,item.cultivar,item.quantity>1?`${item.quantity} st`:"",item.location].filter(Boolean);
-    content.innerHTML = `<p class="eyebrow">${escapeHtml(item.kind === "bed" ? "Odlingsbädd" : item.kind === "group" ? "Grupp" : "Växt")}</p><h2>${escapeHtml(item.name)}</h2><div class="detail-meta">${meta.map(v=>`<span class="pill">${escapeHtml(v)}</span>`).join("")}</div>
+    state.openItem = item;
+    const kindName = item.kind === "bed" ? "Odlingsbädd" : item.kind === "group" ? "Grupp" : "Enskild växt";
+    content.innerHTML = `<div class="detail-heading"><div><p class="eyebrow">${escapeHtml(kindName)}</p><h2>${escapeHtml(item.name)}</h2></div><button class="button secondary" data-edit-item="${item.id}">Redigera växt</button></div>
+      <dl class="plant-facts"><div><dt>Sort</dt><dd>${escapeHtml(item.cultivar || "Ej angiven")}</dd></div><div><dt>Antal</dt><dd>${item.quantity}</dd></div><div><dt>Kategori</dt><dd>${escapeHtml(item.category || "Ej angiven")}</dd></div><div><dt>Placering</dt><dd>${escapeHtml(item.location || "Ej angiven")}</dd></div>${item.age_stage?`<div><dt>Ålder/stadium</dt><dd>${escapeHtml(item.age_stage)}</dd></div>`:""}</dl>
       ${item.notes?`<p>${escapeHtml(item.notes)}</p>`:""}
       <section class="detail-section"><h3>Nästa uppgifter</h3>${item.next_tasks?.length?item.next_tasks.map(taskRow).join(""):'<p class="muted">Inga aktiva uppgifter ännu.</p>'}</section>
       <section class="detail-section"><h3>Skötselråd</h3>${plan?`<p>${escapeHtml(plan.summary)}</p>${plan.warnings?.map(w=>`<p>⚠ ${escapeHtml(w)}</p>`).join("")||""}`:'<p class="muted">Hämta ett källbelagt förslag och granska det innan något läggs i årshjulet.</p>'}<button class="button secondary" data-research="${item.id}">${plan?"Uppdatera skötselråd":"Hämta skötselråd"}</button></section>
       ${proposal?proposalMarkup(proposal):planSources(plan)}`;
   } catch(e) { content.innerHTML = `<h2>Kunde inte öppna växten</h2><p>${escapeHtml(e.message)}</p>`; }
+}
+
+function editItem(item) {
+  $("#detail-dialog").close();
+  openForm("Redigera växt", `<label>Namn<input name="name" required value="${escapeHtml(item.name)}"></label><label>Sort<input name="cultivar" value="${escapeHtml(item.cultivar)}" placeholder="Till exempel Glen Ample"></label><div id="reanalyze-choice" class="reanalyze-choice hidden"><p><strong>Sorten påverkar ofta skötselråden.</strong></p><label class="check-row"><input type="checkbox" name="refresh_research" checked><span>Hämta ett nytt källbelagt förslag efter att växten sparats</span></label><small>Det äldre ogranskade förslaget ersätts. Godkända uppgifter och historik lämnas kvar.</small></div><label>Typ<select name="kind"><option value="individual">Enskild växt</option><option value="group">Grupp</option><option value="bed">Odlingsbädd</option></select></label><label>Kategori<input name="category" value="${escapeHtml(item.category)}"></label><label>Antal<input name="quantity" type="number" min="1" value="${item.quantity}"></label><label>Ålder eller stadium<input name="age_stage" value="${escapeHtml(item.age_stage)}"></label><label>Placering<input name="location" value="${escapeHtml(item.location)}"></label><label>Egna anteckningar<textarea name="notes">${escapeHtml(item.notes)}</textarea></label>`, "Spara växt", async fd => {
+    const values = Object.fromEntries(fd);
+    const refresh = values.refresh_research === "on" && values.cultivar.trim() !== item.cultivar.trim();
+    delete values.refresh_research;
+    values.quantity = Number(values.quantity);
+    await api(`/api/items/${item.id}/`, {method:"PATCH", body:JSON.stringify(values)});
+    let message = "Växten är uppdaterad";
+    if (refresh) {
+      try {
+        await api(`/api/items/${item.id}/research/`, {method:"POST", body:"{}"});
+        message = "Växten är uppdaterad och ett nytt förslag väntar på granskning";
+      } catch (error) {
+        message = `Växten sparades, men råden kunde inte uppdateras: ${error.message}`;
+      }
+    }
+    toast(message);
+  });
+  const form = $("#dynamic-form");
+  form.elements.kind.value = item.kind;
+  const cultivar = form.elements.cultivar;
+  const updateChoice = () => $("#reanalyze-choice").classList.toggle("hidden", cultivar.value.trim() === item.cultivar.trim());
+  cultivar.addEventListener("input", updateChoice);
+  updateChoice();
 }
 
 function planSources(plan) {
@@ -172,6 +201,7 @@ document.addEventListener("click", async event => {
   const item=event.target.closest("[data-open-item]"); if(item?.dataset.openItem){$("#search-dialog").close();openItem(Number(item.dataset.openItem));return;}
   const quick=event.target.closest("[data-quick-add]"); if(quick){newItem(quick.dataset.quickAdd);return;}
   const researchButton=event.target.closest("[data-research]"); if(researchButton){research(researchButton.dataset.research,researchButton);return;}
+  const editItemButton=event.target.closest("[data-edit-item]"); if(editItemButton && state.openItem){editItem(state.openItem);return;}
   const approveButton=event.target.closest("[data-approve]"); if(approveButton){approve(approveButton.dataset.approve);return;}
   const editButton=event.target.closest("[data-edit-rule]"); if(editButton){editRule(editButton);return;}
   const reject=event.target.closest("[data-reject]"); if(reject){await api(`/api/proposals/${reject.dataset.reject}/`,{method:"DELETE"});toast("Förslaget avvisades");$("#detail-dialog").close();await load();return;}

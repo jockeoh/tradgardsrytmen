@@ -108,6 +108,28 @@ class ProposalTests(TestCase):
             create_research_proposal(self.item, self.garden, broken)
         self.assertEqual(ResearchProposal.objects.count(), 0)
 
+    def test_new_research_supersedes_only_older_pending_proposals(self):
+        first = create_research_proposal(self.item, self.garden, self.response())
+        active_plan = CarePlanVersion.objects.create(item=self.item, version=2, status="active", source_type="manual")
+        active_rule = CareRule.objects.create(item=self.item, plan=active_plan, title="Bevarad uppgift", active=True, source_validated=True)
+        historical = TaskOccurrence.objects.create(item=self.item, rule=active_rule, title="Redan klar", occurrence_key="history:kept", season_year=2026, occurrence_month=7, window_start=date(2026,7,1), window_end=date(2026,7,31), status="completed")
+        second = create_research_proposal(self.item, self.garden, self.response())
+        first.refresh_from_db(); first.plan.refresh_from_db(); active_plan.refresh_from_db(); historical.refresh_from_db()
+        self.assertEqual(first.status, "superseded")
+        self.assertEqual(first.plan.status, "superseded")
+        self.assertEqual(second.status, "pending")
+        self.assertEqual(active_plan.status, "active")
+        self.assertEqual(historical.status, "completed")
+
+    def test_failed_research_keeps_existing_pending_proposal(self):
+        proposal = create_research_proposal(self.item, self.garden, self.response())
+        malformed = self.response()
+        malformed["output"][1]["content"][0]["text"] = "not json"
+        with self.assertRaises(ResearchError):
+            create_research_proposal(self.item, self.garden, malformed)
+        proposal.refresh_from_db()
+        self.assertEqual(proposal.status, "pending")
+
     def test_schema_mismatch_and_conflict_are_safe(self):
         malformed = self.response()
         body = json.loads(malformed["output"][1]["content"][0]["text"])
@@ -146,6 +168,12 @@ class ApiAndSearchTests(TestCase):
         response = self.client.post("/api/tasks/", json.dumps({"item_id":self.item.pk,"title":"Bind upp","window_start":"2026-05-01","window_end":"2026-05-31"}), content_type="application/json")
         self.assertEqual(response.status_code, 201)
         self.assertTrue(TaskOccurrence.objects.get().manual)
+
+    def test_existing_item_can_be_edited_with_cultivar_and_facts(self):
+        response = self.client.patch(f"/api/items/{self.item.pk}/", json.dumps({"cultivar":"New Dawn","quantity":2,"location":"Söderväggen","age_stage":"Etablerad"}), content_type="application/json")
+        self.assertEqual(response.status_code, 200)
+        self.item.refresh_from_db()
+        self.assertEqual((self.item.cultivar, self.item.quantity, self.item.location, self.item.age_stage), ("New Dawn", 2, "Söderväggen", "Etablerad"))
 
     def test_health_and_pwa_shell(self):
         self.assertEqual(self.client.get("/health/").json()["status"], "ok")

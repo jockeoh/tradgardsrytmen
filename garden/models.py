@@ -96,7 +96,7 @@ class CareRule(models.Model):
 
 
 class ResearchProposal(models.Model):
-    STATUS_CHOICES = [("pending", "Väntar"), ("approved", "Godkänd"), ("rejected", "Avvisad"), ("failed", "Misslyckad")]
+    STATUS_CHOICES = [("pending", "Väntar"), ("approved", "Godkänd"), ("rejected", "Avvisad"), ("superseded", "Ersatt"), ("failed", "Misslyckad")]
     item = models.ForeignKey(GardenItem, on_delete=models.CASCADE, related_name="proposals")
     plan = models.OneToOneField(CarePlanVersion, on_delete=models.CASCADE, related_name="proposal")
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
@@ -151,4 +151,3 @@ class ReminderDelivery(models.Model):
     sent_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=20, default="pending")
     error = models.TextField(blank=True)
-
