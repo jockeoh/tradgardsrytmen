@@ -50,6 +50,7 @@ set +a
 runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" migrate --noinput
 runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" seed_garden
 "$VENV/bin/python" "$APP/manage.py" collectstatic --noinput
+chmod -R a+rX "$APP/staticfiles"
 runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" check --deploy
 
 install -m 0755 "$APP/scripts/auto_deploy_linux.sh" /usr/local/sbin/tradgardsrytmen-auto-deploy
