@@ -53,11 +53,14 @@ def occurrence_specs(rule, season_year):
 
 @transaction.atomic
 def materialize_rule(rule, through_year=None, not_before=None):
-    through_year = through_year or timezone.localdate().year + 1
-    start_year = timezone.localdate().year - 1
+    today = timezone.localdate()
+    through_year = through_year or today.year + 1
+    start_year = today.year - 1
     created = []
     for season_year in range(start_year, through_year + 1):
         for position, (month, window_start, window_end) in enumerate(occurrence_specs(rule, season_year)):
+            if window_end < today:
+                continue
             if not_before and window_start < not_before:
                 continue
             key = f"rule:{rule.pk}:season:{season_year}:slot:{position}:{window_start.isoformat()}"
@@ -75,7 +78,29 @@ def materialize_rule(rule, through_year=None, not_before=None):
     return created
 
 
+@transaction.atomic
+def archive_pre_activation_backlog():
+    """Keep newly approved plans forward-looking without deleting task history."""
+    archived_at = timezone.now()
+    archived = 0
+    tasks = TaskOccurrence.objects.filter(
+        status="pending", manual=False, rule__plan__reviewed_at__isnull=False
+    ).select_related("rule__plan")
+    for task in tasks:
+        activated_on = timezone.localtime(task.rule.plan.reviewed_at).date()
+        if task.window_end >= activated_on:
+            continue
+        task.status = "skipped"
+        task.skipped_at = archived_at
+        if not task.note:
+            task.note = "Automatiskt undanlagd: uppgiften skapades från ett kalenderfönster före planens godkännande."
+        task.save(update_fields=["status", "skipped_at", "note", "updated_at"])
+        archived += 1
+    return archived
+
+
 def materialize_active_rules():
+    archive_pre_activation_backlog()
     total = 0
     for rule in CareRule.objects.filter(active=True).select_related("item"):
         total += len(materialize_rule(rule))

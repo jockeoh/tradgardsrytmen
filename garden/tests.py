@@ -1,12 +1,12 @@
 import json
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from unittest.mock import patch
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 from .models import CarePlanVersion, CareRule, GardenItem, GardenSettings, PushSubscription, ReminderDelivery, ResearchProposal, TaskOccurrence
 from .push import send_due_reminders
 from .research import ResearchError, approve_proposal, create_research_proposal
-from .tasks import dashboard_for, materialize_rule, months_for_season
+from .tasks import archive_pre_activation_backlog, dashboard_for, materialize_rule, months_for_season
 
 
 class TaskMaterializationTests(TestCase):
@@ -25,13 +25,38 @@ class TaskMaterializationTests(TestCase):
         self.assertEqual(task.window_start, date(2026, 11, 1))
         self.assertEqual(task.window_end, date(2027, 2, 28))
 
-    def test_monthly_cadence_creates_every_month_once(self):
+    @patch("garden.tasks.timezone.localdate", return_value=date(2026, 4, 9))
+    def test_monthly_cadence_creates_every_future_month_once(self, mocked_today):
         rule = self.rule(cadence="monthly", start_month=5, end_month=7)
-        materialize_rule(rule, through_year=timezone.localdate().year + 1)
-        count = rule.occurrences.filter(season_year=timezone.localdate().year).count()
+        materialize_rule(rule, through_year=2027)
+        count = rule.occurrences.filter(season_year=2026).count()
         self.assertEqual(count, 3)
-        materialize_rule(rule, through_year=timezone.localdate().year + 1)
-        self.assertEqual(rule.occurrences.filter(season_year=timezone.localdate().year).count(), 3)
+        materialize_rule(rule, through_year=2027)
+        self.assertEqual(rule.occurrences.filter(season_year=2026).count(), 3)
+
+    @patch("garden.tasks.timezone.localdate", return_value=date(2026, 8, 9))
+    def test_materialization_skips_expired_windows_but_keeps_current_work(self, mocked_today):
+        monthly = self.rule(cadence="monthly", start_month=5, end_month=10)
+        seasonal = self.rule(title="Pågående säsong", start_month=4, end_month=9)
+        materialize_rule(monthly, through_year=2026)
+        materialize_rule(seasonal, through_year=2026)
+        self.assertEqual(list(monthly.occurrences.values_list("occurrence_month", flat=True)), [8, 9, 10])
+        current = seasonal.occurrences.get()
+        self.assertEqual((current.window_start, current.window_end), (date(2026, 4, 1), date(2026, 9, 30)))
+
+    def test_pre_activation_backlog_is_skipped_but_manual_and_current_tasks_remain(self):
+        reviewed_at = timezone.make_aware(datetime(2026, 8, 9, 10, 0))
+        plan = CarePlanVersion.objects.create(item=self.item, status="active", reviewed_at=reviewed_at)
+        rule = CareRule.objects.create(item=self.item, plan=plan, title="Ny regel", active=True)
+        old_generated = TaskOccurrence.objects.create(item=self.item, rule=rule, title="Gammal", occurrence_key="generated:old", season_year=2026, occurrence_month=7, window_start=date(2026, 7, 1), window_end=date(2026, 7, 31))
+        current_generated = TaskOccurrence.objects.create(item=self.item, rule=rule, title="Nu", occurrence_key="generated:current", season_year=2026, occurrence_month=8, window_start=date(2026, 8, 1), window_end=date(2026, 8, 31))
+        manual_old = TaskOccurrence.objects.create(item=self.item, title="Egen gammal", occurrence_key="manual:old", season_year=2026, occurrence_month=7, window_start=date(2026, 7, 1), window_end=date(2026, 7, 31), manual=True)
+        self.assertEqual(archive_pre_activation_backlog(), 1)
+        old_generated.refresh_from_db(); current_generated.refresh_from_db(); manual_old.refresh_from_db()
+        self.assertEqual(old_generated.status, "skipped")
+        self.assertIn("Automatiskt undanlagd", old_generated.note)
+        self.assertEqual(current_generated.status, "pending")
+        self.assertEqual(manual_old.status, "pending")
 
     def test_one_off_rule_is_created_only_once(self):
         upcoming = (timezone.localdate().month % 12) + 1
