@@ -102,6 +102,19 @@ class ProposalTests(TestCase):
         with self.assertRaisesRegex(ResearchError, "nyckel saknas"):
             call_openai(self.item, self.garden)
 
+    @override_settings(OPENAI_API_KEY="test-key")
+    @patch("garden.research.urllib.request.urlopen")
+    def test_notes_are_sent_as_cautious_local_observations(self, mocked_open):
+        from .research import call_openai
+        self.item.notes = "Vissa plantor verkar döda, kan behöva bytas ut våren 2027."
+        self.item.save(update_fields=["notes"])
+        mocked_open.return_value.__enter__.return_value.read.return_value = json.dumps(self.response()).encode()
+        call_openai(self.item, self.garden)
+        request_body = json.loads(mocked_open.call_args.args[0].data)
+        self.assertIn(self.item.notes, request_body["input"])
+        self.assertIn("lokal observation", request_body["input"])
+        self.assertIn("inte som en bekräftad diagnos", request_body["input"])
+
     def test_invalid_json_fails_without_persisting(self):
         broken={"output":[{"type":"message","content":[{"type":"output_text","text":"not json"}]}]}
         with self.assertRaises(ResearchError):

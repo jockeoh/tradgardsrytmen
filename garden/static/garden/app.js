@@ -124,9 +124,9 @@ async function openItem(id) {
 
 function editItem(item) {
   $("#detail-dialog").close();
-  openForm("Redigera växt", `<label>Namn<input name="name" required value="${escapeHtml(item.name)}"></label><label>Sort<input name="cultivar" value="${escapeHtml(item.cultivar)}" placeholder="Till exempel Glen Ample"></label><div id="reanalyze-choice" class="reanalyze-choice hidden"><p><strong>Sorten påverkar ofta skötselråden.</strong></p><label class="check-row"><input type="checkbox" name="refresh_research" checked><span>Hämta ett nytt källbelagt förslag efter att växten sparats</span></label><small>Det äldre ogranskade förslaget ersätts. Godkända uppgifter och historik lämnas kvar.</small></div><label>Typ<select name="kind"><option value="individual">Enskild växt</option><option value="group">Grupp</option><option value="bed">Odlingsbädd</option></select></label><label>Kategori<input name="category" value="${escapeHtml(item.category)}"></label><label>Antal<input name="quantity" type="number" min="1" value="${item.quantity}"></label><label>Ålder eller stadium<input name="age_stage" value="${escapeHtml(item.age_stage)}"></label><label>Placering<input name="location" value="${escapeHtml(item.location)}"></label><label>Egna anteckningar<textarea name="notes">${escapeHtml(item.notes)}</textarea></label>`, "Spara växt", async fd => {
+  openForm("Redigera växt", `<label>Namn<input name="name" required value="${escapeHtml(item.name)}"></label><label>Sort<input name="cultivar" value="${escapeHtml(item.cultivar)}" placeholder="Till exempel Glen Ample"></label><div id="reanalyze-choice" class="reanalyze-choice hidden"><p><strong>Sorten eller egna anteckningar kan påverka skötselråden.</strong></p><label class="check-row"><input type="checkbox" name="refresh_research" checked><span>Hämta ett nytt källbelagt förslag efter att växten sparats</span></label><small>Anteckningar behandlas som observationer. Det äldre ogranskade förslaget ersätts; godkända uppgifter och historik lämnas kvar.</small></div><label>Typ<select name="kind"><option value="individual">Enskild växt</option><option value="group">Grupp</option><option value="bed">Odlingsbädd</option></select></label><label>Kategori<input name="category" value="${escapeHtml(item.category)}"></label><label>Antal<input name="quantity" type="number" min="1" value="${item.quantity}"></label><label>Ålder eller stadium<input name="age_stage" value="${escapeHtml(item.age_stage)}"></label><label>Placering<input name="location" value="${escapeHtml(item.location)}"></label><label>Egna anteckningar<textarea name="notes">${escapeHtml(item.notes)}</textarea></label>`, "Spara växt", async fd => {
     const values = Object.fromEntries(fd);
-    const refresh = values.refresh_research === "on" && values.cultivar.trim() !== item.cultivar.trim();
+    const refresh = values.refresh_research === "on" && (values.cultivar.trim() !== item.cultivar.trim() || values.notes.trim() !== item.notes.trim());
     delete values.refresh_research;
     values.quantity = Number(values.quantity);
     await api(`/api/items/${item.id}/`, {method:"PATCH", body:JSON.stringify(values)});
@@ -143,9 +143,10 @@ function editItem(item) {
   });
   const form = $("#dynamic-form");
   form.elements.kind.value = item.kind;
-  const cultivar = form.elements.cultivar;
-  const updateChoice = () => $("#reanalyze-choice").classList.toggle("hidden", cultivar.value.trim() === item.cultivar.trim());
+  const cultivar = form.elements.cultivar, notes = form.elements.notes;
+  const updateChoice = () => $("#reanalyze-choice").classList.toggle("hidden", cultivar.value.trim() === item.cultivar.trim() && notes.value.trim() === item.notes.trim());
   cultivar.addEventListener("input", updateChoice);
+  notes.addEventListener("input", updateChoice);
   updateChoice();
 }
 

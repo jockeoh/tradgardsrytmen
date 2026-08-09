@@ -70,6 +70,8 @@ def call_openai(item, garden):
         raise ResearchError("OpenAI-nyckel saknas. Manuella funktioner fungerar fortfarande.")
     prompt = f"""Ta fram korta, praktiska och försiktiga skötselråd för {item.name} ({item.cultivar or 'sort okänd'}), kategori {item.category or 'okänd'}.
 Trädgården ligger i {garden.city}, odlingszon {garden.cultivation_zone}, {garden.exposure}. Posten är {item.kind}, antal {item.quantity}, stadium {item.age_stage or 'okänt'}, placering {item.location or 'ej angiven'}.
+Egen trädgårdsanteckning: {item.notes or 'Ingen anteckning angiven'}
+Behandla anteckningen som en lokal observation, inte som en bekräftad diagnos. När den är relevant får du föreslå en försiktig, villkorad uppgift för kontroll, bedömning eller åtgärd. Sätt tydliga osäkerheter och föreslå inte åtgärder som förutsätter att en orsak är fastställd.
 Prioritera svenska källor och komplettera bara med RHS. Ange realistiska månadsfönster och markera evidence_conflict när källorna motsäger varandra eller underlaget är tunt. Två samstämmiga källor är bäst. Kemiskt växtskydd kräver aktuell svensk myndighetskälla. Exakta gödseldoser ska vara villkorade när jord, sort eller produkt är okänd. Kopiera inte artikeltext; sammanfatta."""
     request_body = {
         "model": settings.OPENAI_MODEL,
