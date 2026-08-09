@@ -37,9 +37,12 @@ fi
 git_as_clawd pull --ff-only --quiet origin main
 mkdir -p "$APP"
 rsync -a --delete --exclude '.git' --exclude '.venv' --exclude 'db.sqlite3' --exclude 'staticfiles' "$CHECKOUT/" "$APP/"
+chmod 0755 "$RUNTIME" "$APP"
+chmod -R a+rX "$APP"
 
 python3.12 -m venv "$VENV"
 "$VENV/bin/pip" install --quiet --disable-pip-version-check -r "$APP/requirements.txt"
+chmod -R a+rX "$VENV"
 
 set -a
 source "$ENV_FILE"
