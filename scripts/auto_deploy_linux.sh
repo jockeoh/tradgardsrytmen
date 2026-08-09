@@ -13,15 +13,18 @@ LOCK_FILE=/run/lock/tradgardsrytmen-deploy.lock
 exec 9>"$LOCK_FILE"
 flock -n 9 || exit 0
 cd "$CHECKOUT"
+git_as_clawd() {
+  runuser -u clawd -- git -C "$CHECKOUT" "$@"
+}
 
-if [[ -n "$(git status --porcelain)" ]]; then
+if [[ -n "$(git_as_clawd status --porcelain)" ]]; then
   echo "Avbryter: checkouten innehåller lokala ändringar." >&2
   exit 1
 fi
 
-git fetch --quiet origin main
-LOCAL_REV=$(git rev-parse HEAD)
-REMOTE_REV=$(git rev-parse origin/main)
+git_as_clawd fetch --quiet origin main
+LOCAL_REV=$(git_as_clawd rev-parse HEAD)
+REMOTE_REV=$(git_as_clawd rev-parse origin/main)
 DEPLOYED_REV=$(cat "$STATE_DIR/deployed_commit" 2>/dev/null || true)
 if [[ "$LOCAL_REV" == "$REMOTE_REV" && "$DEPLOYED_REV" == "$REMOTE_REV" ]]; then
   exit 0
@@ -31,7 +34,7 @@ if [[ -f "$STATE_DIR/db.sqlite3" && -x "$VENV/bin/python" ]]; then
   runuser -u tradgardsrytmen -- env TRADGARDSRYTMEN_DB_PATH="$STATE_DIR/db.sqlite3" TRADGARDSRYTMEN_DATA_DIR="$STATE_DIR" "$VENV/bin/python" "$APP/manage.py" backup_database
 fi
 
-git pull --ff-only --quiet origin main
+git_as_clawd pull --ff-only --quiet origin main
 mkdir -p "$APP"
 rsync -a --delete --exclude '.git' --exclude '.venv' --exclude 'db.sqlite3' --exclude 'staticfiles' "$CHECKOUT/" "$APP/"
 
@@ -54,7 +57,7 @@ systemctl restart tradgardsrytmen.service
 
 for _ in {1..20}; do
   if curl --fail --silent --show-error http://127.0.0.1:10443/health/ >/dev/null; then
-    git rev-parse HEAD > "$STATE_DIR/deployed_commit"
+    git_as_clawd rev-parse HEAD > "$STATE_DIR/deployed_commit"
     chown tradgardsrytmen:tradgardsrytmen "$STATE_DIR/deployed_commit"
     exit 0
   fi
