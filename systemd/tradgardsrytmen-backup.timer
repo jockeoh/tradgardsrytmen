@@ -1,0 +1,11 @@
+[Unit]
+Description=Nattlig backup av Trädgårdsrytmen
+
+[Timer]
+OnCalendar=*-*-* 02:35:00 Europe/Stockholm
+Persistent=true
+RandomizedDelaySec=10m
+
+[Install]
+WantedBy=timers.target
+

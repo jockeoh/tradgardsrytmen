@@ -1,0 +1,23 @@
+[Unit]
+Description=Trädgårdsrytmen web
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=tradgardsrytmen
+Group=tradgardsrytmen
+WorkingDirectory=/opt/tradgardsrytmen/app
+EnvironmentFile=/etc/tradgardsrytmen/tradgardsrytmen.env
+ExecStart=/opt/tradgardsrytmen/venv/bin/gunicorn config.wsgi:application --bind 127.0.0.1:10443 --workers 1 --threads 4 --timeout 120 --access-logfile - --error-logfile -
+Restart=on-failure
+RestartSec=3
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/tradgardsrytmen
+
+[Install]
+WantedBy=multi-user.target
+

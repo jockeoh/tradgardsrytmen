@@ -1,0 +1,14 @@
+[Unit]
+Description=Private Tailscale Serve for Trädgårdsrytmen
+After=network-online.target tailscaled.service tradgardsrytmen.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/bin/tailscale serve --bg --https=10443 http://127.0.0.1:10443
+ExecStop=/usr/bin/tailscale serve --https=10443 off
+
+[Install]
+WantedBy=multi-user.target
+

@@ -1,0 +1,8 @@
+[Unit]
+Description=Autodeploy av Trädgårdsrytmen
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/tradgardsrytmen-auto-deploy
+

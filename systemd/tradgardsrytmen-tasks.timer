@@ -1,0 +1,10 @@
+[Unit]
+Description=Nattlig påfyllning av trädgårdsuppgifter
+
+[Timer]
+OnCalendar=*-*-* 02:15:00 Europe/Stockholm
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+

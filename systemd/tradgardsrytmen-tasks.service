@@ -1,0 +1,11 @@
+[Unit]
+Description=Fyll på kommande trädgårdsuppgifter
+
+[Service]
+Type=oneshot
+User=tradgardsrytmen
+Group=tradgardsrytmen
+WorkingDirectory=/opt/tradgardsrytmen/app
+EnvironmentFile=/etc/tradgardsrytmen/tradgardsrytmen.env
+ExecStart=/opt/tradgardsrytmen/venv/bin/python manage.py materialize_tasks
+

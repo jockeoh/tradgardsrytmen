@@ -1,0 +1,91 @@
+{% load static %}
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+  <meta name="theme-color" content="#214c3b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Trädgårdsrytmen">
+  <meta name="description" content="Håll rytmen i trädgården, månad för månad.">
+  <link rel="manifest" href="{% static 'garden/manifest.webmanifest' %}">
+  <link rel="apple-touch-icon" href="{% static 'garden/icons/icon-192.png' %}">
+  <link rel="stylesheet" href="{% static 'garden/app.css' %}">
+  <title>Trädgårdsrytmen</title>
+</head>
+<body>
+  <a class="skip-link" href="#main">Hoppa till innehållet</a>
+  <aside class="side-nav" aria-label="Huvudnavigation">
+    <div class="brand"><span class="brand-mark">T</span><span>Trädgårdsrytmen</span></div>
+    <button class="nav-link active" data-view="month"><span>◷</span> Den här månaden</button>
+    <button class="nav-link" data-view="year"><span>○</span> Året</button>
+    <button class="nav-link" data-view="plants"><span>♧</span> Växter</button>
+    <button class="nav-link" data-view="settings"><span>⌁</span> Inställningar</button>
+    <div class="garden-place"><strong>Karlskrona</strong><span>Zon 1 · kustnära</span></div>
+  </aside>
+
+  <main id="main">
+    <header class="topbar">
+      <div><p class="eyebrow">Vår trädgård</p><h1 id="view-title">Den här månaden</h1></div>
+      <button class="search-trigger" id="search-trigger" aria-label="Sök i trädgården"><span>⌕</span><span class="search-label">Sök växt eller råd</span><kbd>⌘ K</kbd></button>
+    </header>
+
+    <div id="loading" class="loading-state"><span class="spinner"></span><p>Hämtar trädgårdens rytm …</p></div>
+    <div id="error-state" class="empty-state hidden"><h2>Något gick snett</h2><p id="error-message"></p><button class="button" onclick="location.reload()">Försök igen</button></div>
+
+    <section class="view hidden" id="view-month" aria-labelledby="view-title">
+      <div class="month-hero">
+        <div class="hero-copy"><p class="hero-kicker" id="hero-date"></p><h2 id="hero-month">{{ month_name|capfirst }}</h2><p id="hero-next">Vi räknar ut nästa steg …</p></div>
+        <div class="progress-orbit" role="img" aria-label="Månadens genomförande"><strong id="progress-value">0%</strong><span>klart</span></div>
+      </div>
+      <div class="section-heading"><div><p class="eyebrow">Din rytm</p><h2>Att göra</h2></div><button class="text-button" id="new-task">+ Egen uppgift</button></div>
+      <div id="task-groups"></div>
+    </section>
+
+    <section class="view hidden" id="view-year">
+      <div class="section-heading"><div><p class="eyebrow">Årshjul</p><h2>Hela trädgårdsåret</h2></div></div>
+      <p class="lead">Se var arbetstopparna ligger. Tryck på en månad för att komma tillbaka till månadsvyn.</p>
+      <div class="year-grid" id="year-grid"></div>
+    </section>
+
+    <section class="view hidden" id="view-plants">
+      <div class="section-heading"><div><p class="eyebrow">Det som växer</p><h2>Växter och odlingar</h2></div><button class="button" id="new-item">+ Lägg till</button></div>
+      <div class="quick-add"><span>Snabba tillägg</span><div id="quick-adds"></div></div>
+      <div class="plant-list" id="plant-list"></div>
+    </section>
+
+    <section class="view hidden" id="view-settings">
+      <div class="section-heading"><div><p class="eyebrow">Anpassning</p><h2>Inställningar</h2></div></div>
+      <form class="settings-form" id="settings-form">
+        <fieldset><legend>Trädgårdsprofil</legend><div class="field-grid">
+          <label>Plats<input name="city" autocomplete="address-level2"></label>
+          <label>Odlingszon<input name="cultivation_zone" inputmode="numeric"></label>
+          <label class="wide">Läge<input name="exposure"></label>
+        </div><button class="button" type="submit">Spara profil</button></fieldset>
+        <fieldset><legend>Notiser på den här enheten</legend><p class="muted">Avstängt tills du väljer att aktivera. Kräver att appen är installerad på iPhone.</p>
+          <label class="switch-row"><span><strong>Månadssammanfattning</strong><small>En lugn överblick i början av månaden</small></span><input type="checkbox" id="notify-monthly"></label>
+          <label class="switch-row"><span><strong>Uppgiftspåminnelser</strong><small>Påminn om sådant som är dags nu</small></span><input type="checkbox" id="notify-tasks"></label>
+          <button class="button secondary" type="button" id="save-notifications">Aktivera och spara</button>
+          <button class="text-button" type="button" id="test-notification">Skicka testnotis</button>
+        </fieldset>
+        <fieldset><legend>AI-förslag</legend><p>AI lägger aldrig till uppgifter själv. Alla råd hamnar först i din granskningskö.</p><p><strong id="proposal-count">0</strong> förslag väntar på granskning.</p></fieldset>
+      </form>
+    </section>
+  </main>
+
+  <nav class="bottom-nav" aria-label="Huvudnavigation">
+    <button class="nav-link active" data-view="month"><span>◷</span><small>Månaden</small></button>
+    <button class="nav-link" data-view="year"><span>○</span><small>Året</small></button>
+    <button class="nav-link" data-view="plants"><span>♧</span><small>Växter</small></button>
+    <button class="nav-link" data-view="settings"><span>⌁</span><small>Inställningar</small></button>
+  </nav>
+
+  <dialog id="search-dialog" class="search-dialog"><form method="dialog"><button class="dialog-close" aria-label="Stäng">×</button></form><label for="global-search">Sök i trädgården</label><input id="global-search" type="search" placeholder="Prova Flammantz, beskärning …" autocomplete="off"><div id="search-results" class="search-results"><p class="muted">Sök bland växter, sorter, alias, råd och uppgifter.</p></div></dialog>
+  <dialog id="form-dialog" class="sheet-dialog"><form id="dynamic-form"><button class="dialog-close" type="button" data-close>×</button><div id="form-content"></div></form></dialog>
+  <dialog id="detail-dialog" class="detail-dialog"><button class="dialog-close" type="button" data-close-detail>×</button><div id="detail-content"></div></dialog>
+  <div id="toast" class="toast" role="status" aria-live="polite"></div>
+  <script src="{% static 'garden/app.js' %}" defer></script>
+</body>
+</html>
+

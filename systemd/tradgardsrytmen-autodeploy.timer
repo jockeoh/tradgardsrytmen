@@ -1,0 +1,12 @@
+[Unit]
+Description=Kontrollera main för Trädgårdsrytmen
+
+[Timer]
+OnBootSec=2m
+OnUnitActiveSec=2m
+Persistent=true
+RandomizedDelaySec=15s
+
+[Install]
+WantedBy=timers.target
+

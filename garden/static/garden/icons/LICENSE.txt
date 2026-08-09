@@ -1,0 +1,4 @@
+The sprout glyph is from Lucide, https://lucide.dev/
+Copyright (c) 2022 Lucide Contributors
+Licensed under the ISC License: https://github.com/lucide-icons/lucide/blob/main/LICENSE
+
