@@ -26,6 +26,8 @@ def _task_json(task):
         "id": task.pk, "title": task.title, "instructions": task.instructions, "status": task.status,
         "item": {"id": task.item_id, "name": task.item.name}, "start": task.window_start.isoformat(),
         "end": task.window_end.isoformat(), "month": task.occurrence_month, "manual": task.manual,
+        "conditional": bool(task.rule and task.rule.conditional),
+        "sources": task.rule.source_urls if task.rule else [],
     }
 
 
@@ -198,9 +200,11 @@ def api_tasks(request):
     return JsonResponse({"task": _task_json(task)}, status=201)
 
 
-@require_http_methods(["PATCH"])
+@require_http_methods(["GET", "PATCH"])
 def api_task(request, task_id):
-    task = get_object_or_404(TaskOccurrence, pk=task_id)
+    task = get_object_or_404(TaskOccurrence.objects.select_related("item", "rule"), pk=task_id)
+    if request.method == "GET":
+        return JsonResponse({"task": _task_json(task)})
     data = _json_body(request) or {}
     status = data.get("status")
     if status in {"pending", "completed", "skipped"}:

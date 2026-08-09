@@ -207,6 +207,19 @@ class ApiAndSearchTests(TestCase):
         self.assertEqual(response.status_code, 201)
         self.assertTrue(TaskOccurrence.objects.get().manual)
 
+    def test_task_detail_includes_guidance_and_sources_without_changing_status(self):
+        plan = CarePlanVersion.objects.create(item=self.item, status="active")
+        rule = CareRule.objects.create(item=self.item, plan=plan, title="Gallra", instructions="Ta bort gamla skott.", conditional=True, source_urls=["https://www.slu.se/rad/hallon"], active=True)
+        task = TaskOccurrence.objects.create(item=self.item, rule=rule, title="Gallra", instructions="Ta bort gamla skott.", occurrence_key="detail:1", season_year=2026, occurrence_month=8, window_start=date(2026, 8, 1), window_end=date(2026, 8, 31))
+        response = self.client.get(f"/api/tasks/{task.pk}/")
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()["task"]
+        self.assertEqual(payload["instructions"], "Ta bort gamla skott.")
+        self.assertEqual(payload["sources"], ["https://www.slu.se/rad/hallon"])
+        self.assertTrue(payload["conditional"])
+        task.refresh_from_db()
+        self.assertEqual(task.status, "pending")
+
     def test_existing_item_can_be_edited_with_cultivar_and_facts(self):
         response = self.client.patch(f"/api/items/{self.item.pk}/", json.dumps({"cultivar":"New Dawn","quantity":2,"location":"Söderväggen","age_stage":"Etablerad"}), content_type="application/json")
         self.assertEqual(response.status_code, 200)

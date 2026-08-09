@@ -36,8 +36,8 @@ function setView(view) {
 function taskRow(task) {
   return `<div class="task-row" data-task="${task.id}">
     <button class="task-check" data-status="completed" aria-label="Markera ${escapeHtml(task.title)} som klar">✓</button>
-    <div class="task-copy"><strong>${escapeHtml(task.title)}</strong><span>${escapeHtml(task.item.name)} · ${new Date(task.end + "T12:00:00").toLocaleDateString("sv-SE",{day:"numeric",month:"short"})}</span></div>
-    <div class="task-actions"><button class="icon-button" data-open-item="${task.item.id}" aria-label="Visa växt">›</button><button class="icon-button" data-status="skipped" aria-label="Hoppa över">⋯</button></div>
+    <button class="task-copy task-open" data-open-task="${task.id}" aria-label="Visa detaljer för ${escapeHtml(task.title)}"><strong>${escapeHtml(task.title)}</strong><span>${escapeHtml(task.item.name)} · ${new Date(task.end + "T12:00:00").toLocaleDateString("sv-SE",{day:"numeric",month:"short"})}</span></button>
+    <button class="task-plant-link" data-open-item="${task.item.id}" aria-label="Visa växten ${escapeHtml(task.item.name)}">Växt</button>
   </div>`;
 }
 
@@ -85,6 +85,29 @@ async function updateTask(id, status) {
   if (status !== "pending") {
     const undo = document.createElement("button"); undo.className = "text-button"; undo.textContent = "Ångra";
     undo.onclick = () => updateTask(id, "pending"); $("#toast").append(" ", undo); $("#toast").classList.add("show");
+  }
+}
+
+function formatTaskDate(value) {
+  return new Date(`${value}T12:00:00`).toLocaleDateString("sv-SE", {day:"numeric", month:"long"});
+}
+
+async function openTask(id) {
+  const dialog = $("#detail-dialog"), content = $("#detail-content");
+  content.innerHTML = `<div class="loading-state"><span class="spinner"></span></div>`;
+  dialog.showModal();
+  try {
+    const {task} = await api(`/api/tasks/${id}/`);
+    const timing = task.start === task.end ? formatTaskDate(task.start) : `${formatTaskDate(task.start)}–${formatTaskDate(task.end)}`;
+    const sources = task.sources?.length ? `<section class="detail-section"><h3>Källor</h3>${task.sources.map(url => `<a class="source-link" href="${escapeHtml(url)}" target="_blank" rel="noopener">${escapeHtml(url)} ↗</a>`).join("")}</section>` : "";
+    content.innerHTML = `<div class="task-detail" data-task="${task.id}"><p class="eyebrow">Uppgift</p><h2>${escapeHtml(task.title)}</h2>
+      <div class="detail-meta"><span class="pill">${escapeHtml(task.item.name)}</span><span class="pill">${timing}</span>${task.manual ? '<span class="pill">Egen uppgift</span>' : ""}${task.conditional ? '<span class="pill">Bedöm efter läget</span>' : ""}</div>
+      <section class="detail-section"><h3>Så gör du</h3><p>${escapeHtml(task.instructions || "Inga ytterligare instruktioner har lagts till.")}</p></section>
+      <section class="detail-section"><h3>När</h3><p>Gör uppgiften någon gång ${task.start === task.end ? "den" : "mellan"} ${timing}. Den ligger kvar tills du markerar den som klar eller väljer att hoppa över den.</p></section>
+      <div class="task-detail-actions"><button class="button secondary" data-open-item="${task.item.id}">Visa växt</button><button class="button" data-status="completed">Markera som klar</button></div>
+      <button class="skip-task-button" data-skip-task="${task.id}">Hoppa över uppgiften</button>${sources}</div>`;
+  } catch (error) {
+    content.innerHTML = `<h2>Kunde inte öppna uppgiften</h2><p>${escapeHtml(error.message)}</p>`;
   }
 }
 
@@ -193,13 +216,15 @@ async function saveNotifications() {
 
 async function runSearch(value) {
   const box=$("#search-results"); if(value.trim().length<2){box.innerHTML='<p class="muted">Skriv minst två tecken.</p>';return;}
-  const {results}=await api(`/api/search/?q=${encodeURIComponent(value)}`); box.innerHTML=results.length?results.map(r=>`<button class="search-result" data-open-item="${r.type==='task'?'':r.id}"><strong>${escapeHtml(r.title)}</strong><span>${escapeHtml(r.subtitle)}</span></button>`).join(""):'<p class="muted">Inga träffar ännu.</p>';
+  const {results}=await api(`/api/search/?q=${encodeURIComponent(value)}`); box.innerHTML=results.length?results.map(r=>`<button class="search-result" data-open-item="${r.type==='task'?'':r.id}" data-open-task="${r.type==='task'?r.id:''}"><strong>${escapeHtml(r.title)}</strong><span>${escapeHtml(r.subtitle)}</span></button>`).join(""):'<p class="muted">Inga träffar ännu.</p>';
 }
 
 document.addEventListener("click", async event => {
   const nav=event.target.closest("[data-view]"); if(nav){setView(nav.dataset.view);return;}
-  const status=event.target.closest("[data-status]"); if(status){updateTask(Number(status.closest("[data-task]").dataset.task),status.dataset.status);return;}
-  const item=event.target.closest("[data-open-item]"); if(item?.dataset.openItem){$("#search-dialog").close();openItem(Number(item.dataset.openItem));return;}
+  const status=event.target.closest("[data-status]"); if(status){const taskRow=status.closest("[data-task]"); await updateTask(Number(taskRow.dataset.task),status.dataset.status); if(taskRow.classList.contains("task-detail")) $("#detail-dialog").close(); return;}
+  const skip=event.target.closest("[data-skip-task]"); if(skip){if(window.confirm("Hoppa över uppgiften den här gången? Du kan ångra direkt efteråt.")){ $("#detail-dialog").close(); await updateTask(Number(skip.dataset.skipTask),"skipped"); } return;}
+  const task=event.target.closest("[data-open-task]"); if(task?.dataset.openTask){$("#search-dialog").close();openTask(Number(task.dataset.openTask));return;}
+  const item=event.target.closest("[data-open-item]"); if(item?.dataset.openItem){$("#search-dialog").close(); if ($("#detail-dialog").open) $("#detail-dialog").close(); openItem(Number(item.dataset.openItem));return;}
   const quick=event.target.closest("[data-quick-add]"); if(quick){newItem(quick.dataset.quickAdd);return;}
   const researchButton=event.target.closest("[data-research]"); if(researchButton){research(researchButton.dataset.research,researchButton);return;}
   const editItemButton=event.target.closest("[data-edit-item]"); if(editItemButton && state.openItem){editItem(state.openItem);return;}

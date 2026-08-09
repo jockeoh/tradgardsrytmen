@@ -1,0 +1,7 @@
+.task-copy{min-height:54px;border:0;background:transparent;padding:5px 0;text-align:left}
+.task-open:hover strong,.task-open:focus-visible strong{text-decoration:underline;text-decoration-thickness:1px;text-underline-offset:4px}
+.task-plant-link{min-width:44px;min-height:44px;border:0;border-radius:10px;background:transparent;color:var(--forest);font-size:13px;font-weight:750;padding:0 8px}
+.task-plant-link:hover,.task-plant-link:focus-visible{background:var(--sage-pale)}
+.task-detail-actions{display:flex;justify-content:flex-end;gap:10px;margin:8px 0 13px;flex-wrap:wrap}
+.skip-task-button{min-height:44px;border:0;background:transparent;color:#8f3e2c;font-weight:700;padding:0 8px}
+.skip-task-button:hover,.skip-task-button:focus-visible{text-decoration:underline}
