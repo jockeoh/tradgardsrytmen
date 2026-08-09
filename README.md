@@ -30,3 +30,4 @@ Se `.env.example`. OpenAI-nyckeln är valfri; alla manuella funktioner fungerar 
 
 Systemd-filer och driftsskript ligger i `systemd/` och `scripts/`. Produktionen använder en privat Tailscale Serve-adress på HTTPS-port 10443. Autodeploy följer `main`, vägrar vid smutsig checkout, säkerhetskopierar databasen, migrerar, samlar statik och kräver godkänd hälsokontroll.
 
+Privat PWA-adress: `https://garden.example.com:10443/`
