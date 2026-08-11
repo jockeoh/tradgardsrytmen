@@ -7,6 +7,8 @@ urlpatterns = [
     path("items/", views.api_items),
     path("items/<int:item_id>/", views.api_item),
     path("items/<int:item_id>/research/", views.api_research),
+    path("areas/", views.api_areas),
+    path("areas/<int:area_id>/", views.api_area),
     path("proposals/<int:proposal_id>/", views.api_proposal),
     path("proposals/<int:proposal_id>/approve/", views.api_approve_proposal),
     path("tasks/", views.api_tasks),

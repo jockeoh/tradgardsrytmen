@@ -1,5 +1,6 @@
 from django.db import models
 from django.utils import timezone
+from .work_categories import WORK_CATEGORY_CHOICES
 
 
 class GardenSettings(models.Model):
@@ -19,6 +20,16 @@ class GardenSettings(models.Model):
         return obj
 
 
+class GardenArea(models.Model):
+    name = models.CharField(max_length=80, unique=True)
+    sort_order = models.PositiveSmallIntegerField(default=0)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        ordering = ["sort_order", "name"]
+
+
 class GardenItem(models.Model):
     INDIVIDUAL = "individual"
     GROUP = "group"
@@ -32,6 +43,7 @@ class GardenItem(models.Model):
     cultivar = models.CharField(max_length=120, blank=True)
     quantity = models.PositiveIntegerField(default=1)
     age_stage = models.CharField(max_length=100, blank=True)
+    area = models.ForeignKey(GardenArea, on_delete=models.SET_NULL, null=True, blank=True, related_name="items")
     location = models.CharField(max_length=160, blank=True)
     notes = models.TextField(blank=True)
     icon = models.CharField(max_length=20, default="leaf")
@@ -80,7 +92,7 @@ class CareRule(models.Model):
     item = models.ForeignKey(GardenItem, on_delete=models.CASCADE, related_name="care_rules")
     plan = models.ForeignKey(CarePlanVersion, on_delete=models.SET_NULL, null=True, blank=True, related_name="rules")
     title = models.CharField(max_length=180)
-    category = models.CharField(max_length=80, blank=True)
+    category = models.CharField(max_length=80, choices=WORK_CATEGORY_CHOICES, default="Övrigt")
     instructions = models.TextField(blank=True)
     cadence = models.CharField(max_length=20, choices=CADENCE_CHOICES, default="seasonal")
     start_month = models.PositiveSmallIntegerField(default=1)
@@ -111,6 +123,7 @@ class TaskOccurrence(models.Model):
     rule = models.ForeignKey(CareRule, on_delete=models.CASCADE, null=True, blank=True, related_name="occurrences")
     item = models.ForeignKey(GardenItem, on_delete=models.CASCADE, related_name="tasks")
     title = models.CharField(max_length=180)
+    category = models.CharField(max_length=80, choices=WORK_CATEGORY_CHOICES, default="Övrigt")
     instructions = models.TextField(blank=True)
     occurrence_key = models.CharField(max_length=220, unique=True)
     season_year = models.PositiveIntegerField()

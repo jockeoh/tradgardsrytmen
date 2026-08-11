@@ -13,6 +13,7 @@
   <link rel="apple-touch-icon" href="{% static 'garden/icons/icon-192.png' %}">
   <link rel="stylesheet" href="{% static 'garden/app.css' %}">
   <link rel="stylesheet" href="{% static 'garden/task-detail.css' %}">
+  <link rel="stylesheet" href="{% static 'garden/work-rounds.css' %}">
   <title>Trädgårdsrytmen</title>
 </head>
 <body>
@@ -41,6 +42,7 @@
         <div class="progress-orbit" role="img" aria-label="Månadens genomförande"><strong id="progress-value">0%</strong><span>klart</span></div>
       </div>
       <div class="section-heading"><div><p class="eyebrow">Din rytm</p><h2>Att göra</h2></div><button class="text-button" id="new-task">+ Egen uppgift</button></div>
+      <div class="task-view-switch" role="group" aria-label="Gruppera uppgifter"><button type="button" data-task-view="work">Efter jobb</button><button type="button" data-task-view="area">Efter plats</button></div>
       <div id="task-groups"></div>
     </section>
 
@@ -72,6 +74,13 @@
         </fieldset>
         <fieldset><legend>AI-förslag</legend><p>AI lägger aldrig till uppgifter själv. Alla råd hamnar först i din granskningskö.</p><p><strong id="proposal-count">0</strong> förslag väntar på granskning.</p></fieldset>
       </form>
+      <section class="settings-form area-settings" aria-labelledby="areas-heading">
+        <fieldset><legend id="areas-heading">Trädgårdsområden</legend><p class="muted">Du bestämmer områdena. Den fria platsdetaljen behålls och appen gissar aldrig var en växt står.</p>
+          <form id="new-area-form" class="new-area-form"><label>Nytt område<input name="name" maxlength="80" placeholder="Till exempel Framsidan" required></label><button class="button secondary" type="submit">Skapa område</button></form>
+          <div id="area-list" class="area-list"></div>
+        </fieldset>
+        <fieldset><legend>Placera växter</legend><p class="muted">Den befintliga platsdetaljen visas bredvid varje växt så att du kan välja område utan automatisk gissning.</p><div id="placement-review"></div></fieldset>
+      </section>
     </section>
   </main>
 

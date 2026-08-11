@@ -3,10 +3,11 @@ from datetime import date, datetime, timedelta
 from unittest.mock import patch
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
-from .models import CarePlanVersion, CareRule, GardenItem, GardenSettings, PushSubscription, ReminderDelivery, ResearchProposal, TaskOccurrence
+from .models import CarePlanVersion, CareRule, GardenArea, GardenItem, GardenSettings, PushSubscription, ReminderDelivery, ResearchProposal, TaskOccurrence
 from .push import send_due_reminders
 from .research import ResearchError, approve_proposal, create_research_proposal
 from .tasks import archive_pre_activation_backlog, dashboard_for, materialize_rule, months_for_season
+from .work_categories import WORK_CATEGORIES, normalize_work_category
 
 
 class TaskMaterializationTests(TestCase):
@@ -64,6 +65,11 @@ class TaskMaterializationTests(TestCase):
         materialize_rule(rule, through_year=timezone.localdate().year + 2)
         self.assertEqual(rule.occurrences.count(), 1)
 
+    def test_materialized_task_keeps_normalized_category_snapshot(self):
+        rule = self.rule(category="Beskära och binda upp", start_month=timezone.localdate().month, end_month=timezone.localdate().month)
+        task = materialize_rule(rule, through_year=timezone.localdate().year)[0]
+        self.assertEqual(task.category, "Beskära och binda upp")
+
     def test_overdue_completed_skipped_and_reopen(self):
         past = timezone.localdate().replace(day=1) - timedelta(days=2)
         task = TaskOccurrence.objects.create(item=self.item, title="Gammal", occurrence_key="manual:old", season_year=past.year, occurrence_month=past.month, window_start=past, window_end=past, manual=True)
@@ -84,7 +90,7 @@ class ProposalTests(TestCase):
 
     def response(self, source_urls=None):
         source_urls = source_urls if source_urls is not None else ["https://www.slu.se/rad/hallon"]
-        result = {"summary":"Kort råd.","warnings":[],"uncertainties":[],"tasks":[{"title":"Gallra skott","category":"Beskärning","instructions":"Ta bort gamla skott.","cadence":"seasonal","start_month":8,"end_month":9,"conditional":False,"evidence_conflict":False,"source_urls":source_urls}]}
+        result = {"summary":"Kort råd.","warnings":[],"uncertainties":[],"tasks":[{"title":"Gallra skott","category":"Beskära och binda upp","instructions":"Ta bort gamla skott och lämna årets friska skott kvar.","cadence":"seasonal","start_month":8,"end_month":9,"conditional":False,"evidence_conflict":False,"source_urls":source_urls}]}
         return {"id":"resp_test","output":[{"type":"web_search_call","action":{"sources":[{"title":"SLU råd","url":"https://www.slu.se/rad/hallon"}]}},{"type":"message","content":[{"type":"output_text","text":json.dumps(result)}]}]}
 
     def test_no_tasks_before_review_and_source_is_validated(self):
@@ -139,6 +145,9 @@ class ProposalTests(TestCase):
         self.assertIn(self.item.notes, request_body["input"])
         self.assertIn("lokal observation", request_body["input"])
         self.assertIn("inte som en bekräftad diagnos", request_body["input"])
+        self.assertIn("Slå ihop", request_body["input"])
+        self.assertIn("negativa råd", request_body["input"])
+        self.assertEqual(request_body["text"]["format"]["schema"]["properties"]["tasks"]["items"]["properties"]["category"]["enum"], list(WORK_CATEGORIES))
 
     def test_invalid_json_fails_without_persisting(self):
         broken={"output":[{"type":"message","content":[{"type":"output_text","text":"not json"}]}]}
@@ -181,6 +190,26 @@ class ProposalTests(TestCase):
         conflict["output"][1]["content"][0]["text"] = json.dumps(body)
         self.assertEqual(create_research_proposal(self.item, self.garden, conflict).plan.rules.get().confidence, "low")
 
+    def test_unknown_category_and_to_dont_task_are_rejected(self):
+        invalid_category = self.response()
+        body = json.loads(invalid_category["output"][1]["content"][0]["text"])
+        body["tasks"][0]["category"] = "Beskärning"
+        invalid_category["output"][1]["content"][0]["text"] = json.dumps(body)
+        with self.assertRaisesRegex(ResearchError, "strikta schemat"):
+            create_research_proposal(self.item, self.garden, invalid_category)
+        negative = self.response()
+        body = json.loads(negative["output"][1]["content"][0]["text"])
+        body["tasks"][0].update({"title":"Undvik beskärning", "instructions":"Beskär inte växten under den här perioden eftersom den kan ta skada."})
+        negative["output"][1]["content"][0]["text"] = json.dumps(body)
+        with self.assertRaisesRegex(ResearchError, "varning som egen uppgift"):
+            create_research_proposal(self.item, self.garden, negative)
+        instruction_only = self.response()
+        body = json.loads(instruction_only["output"][1]["content"][0]["text"])
+        body["tasks"][0].update({"title":"Beskärning i augusti", "instructions":"Undvik att beskära hallonet under augusti eftersom skotten kan ta skada."})
+        instruction_only["output"][1]["content"][0]["text"] = json.dumps(body)
+        with self.assertRaisesRegex(ResearchError, "icke-göra-råd"):
+            create_research_proposal(self.item, self.garden, instruction_only)
+
     @override_settings(OPENAI_API_KEY="test-key")
     @patch("garden.research.time.sleep")
     @patch("garden.research.urllib.request.urlopen")
@@ -203,9 +232,12 @@ class ApiAndSearchTests(TestCase):
         self.assertContains(self.client.get("/api/search/?q=Rosor"), "Rosen Flammentanz")
 
     def test_manual_task_creation(self):
-        response = self.client.post("/api/tasks/", json.dumps({"item_id":self.item.pk,"title":"Bind upp","window_start":"2026-05-01","window_end":"2026-05-31"}), content_type="application/json")
+        response = self.client.post("/api/tasks/", json.dumps({"item_id":self.item.pk,"title":"Bind upp","category":"Beskära och binda upp","window_start":"2026-05-01","window_end":"2026-05-31"}), content_type="application/json")
         self.assertEqual(response.status_code, 201)
-        self.assertTrue(TaskOccurrence.objects.get().manual)
+        task = TaskOccurrence.objects.get()
+        self.assertTrue(task.manual)
+        self.assertEqual(task.category, "Beskära och binda upp")
+        self.assertEqual(self.client.post("/api/tasks/", json.dumps({"item_id":self.item.pk,"title":"Fel","category":"Hittepå","window_start":"2026-05-01"}), content_type="application/json").status_code, 400)
 
     def test_task_detail_includes_guidance_and_sources_without_changing_status(self):
         plan = CarePlanVersion.objects.create(item=self.item, status="active")
@@ -221,14 +253,41 @@ class ApiAndSearchTests(TestCase):
         self.assertEqual(task.status, "pending")
 
     def test_existing_item_can_be_edited_with_cultivar_and_facts(self):
-        response = self.client.patch(f"/api/items/{self.item.pk}/", json.dumps({"cultivar":"New Dawn","quantity":2,"location":"Söderväggen","age_stage":"Etablerad"}), content_type="application/json")
+        area = GardenArea.objects.create(name="Framsidan")
+        response = self.client.patch(f"/api/items/{self.item.pk}/", json.dumps({"cultivar":"New Dawn","quantity":2,"area_id":area.pk,"location_detail":"Söderväggen","age_stage":"Etablerad"}), content_type="application/json")
         self.assertEqual(response.status_code, 200)
         self.item.refresh_from_db()
-        self.assertEqual((self.item.cultivar, self.item.quantity, self.item.location, self.item.age_stage), ("New Dawn", 2, "Söderväggen", "Etablerad"))
+        self.assertEqual((self.item.cultivar, self.item.quantity, self.item.area, self.item.location, self.item.age_stage), ("New Dawn", 2, area, "Söderväggen", "Etablerad"))
+
+    def test_areas_can_be_created_renamed_assigned_and_removed(self):
+        created = self.client.post("/api/areas/", json.dumps({"name":"Baksidan"}), content_type="application/json")
+        self.assertEqual(created.status_code, 201)
+        area_id = created.json()["area"]["id"]
+        self.assertEqual(self.client.post("/api/areas/", json.dumps({"name":"baksidan"}), content_type="application/json").status_code, 400)
+        self.client.patch(f"/api/items/{self.item.pk}/", json.dumps({"area_id":area_id}), content_type="application/json")
+        bootstrap = self.client.get("/api/bootstrap/").json()
+        item = next(row for row in bootstrap["items"] if row["id"] == self.item.pk)
+        self.assertEqual(item["area"]["name"], "Baksidan")
+        self.assertEqual(bootstrap["areas"][0]["item_count"], 1)
+        self.assertEqual(self.client.patch(f"/api/areas/{area_id}/", json.dumps({"name":"Köksträdgården"}), content_type="application/json").status_code, 200)
+        self.assertEqual(self.client.delete(f"/api/areas/{area_id}/").status_code, 200)
+        self.item.refresh_from_db()
+        self.assertIsNone(self.item.area)
+
+    def test_task_api_includes_category_area_and_location_detail(self):
+        area = GardenArea.objects.create(name="Framsidan")
+        self.item.area = area
+        self.item.location = "Vid muren"
+        self.item.save(update_fields=["area", "location"])
+        task = TaskOccurrence.objects.create(item=self.item, title="Vattna djupt", category="Vattna", occurrence_key="api:fields", season_year=2026, occurrence_month=8, window_start=date(2026,8,1), window_end=date(2026,8,31), manual=True)
+        payload = self.client.get(f"/api/tasks/{task.pk}/").json()["task"]
+        self.assertEqual((payload["category"], payload["area"]["name"], payload["location_detail"]), ("Vattna", "Framsidan", "Vid muren"))
 
     def test_health_and_pwa_shell(self):
         self.assertEqual(self.client.get("/health/").json()["status"], "ok")
         self.assertContains(self.client.get("/"), "Trädgårdsrytmen")
+        self.assertContains(self.client.get("/"), "Efter jobb")
+        self.assertContains(self.client.get("/"), "Efter plats")
         self.assertEqual(self.client.get("/sw.js").status_code, 200)
 
 

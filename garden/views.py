@@ -1,5 +1,6 @@
 import json
 from datetime import date
+from django.db import IntegrityError
 from django.db.models import Q
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
@@ -7,9 +8,10 @@ from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.contrib.staticfiles import finders
-from .models import CarePlanVersion, CareRule, GardenItem, GardenSettings, PushSubscription, ResearchProposal, TaskOccurrence
+from .models import CarePlanVersion, CareRule, GardenArea, GardenItem, GardenSettings, PushSubscription, ResearchProposal, TaskOccurrence
 from .research import ResearchError, approve_proposal, create_research_proposal
 from .tasks import dashboard_for, materialize_active_rules, month_end
+from .work_categories import WORK_CATEGORIES, normalize_work_category
 
 MONTHS = ["januari", "februari", "mars", "april", "maj", "juni", "juli", "augusti", "september", "oktober", "november", "december"]
 
@@ -22,8 +24,11 @@ def _json_body(request):
 
 
 def _task_json(task):
+    category = normalize_work_category(task.category or (task.rule.category if task.rule else ""), f"{task.title} {task.instructions}")
+    area = {"id": task.item.area_id, "name": task.item.area.name} if task.item.area_id else None
     return {
         "id": task.pk, "title": task.title, "instructions": task.instructions, "status": task.status,
+        "category": category, "area": area, "location_detail": task.item.location,
         "item": {"id": task.item_id, "name": task.item.name}, "start": task.window_start.isoformat(),
         "end": task.window_end.isoformat(), "month": task.occurrence_month, "manual": task.manual,
         "conditional": bool(task.rule and task.rule.conditional),
@@ -32,10 +37,12 @@ def _task_json(task):
 
 
 def _item_json(item, detail=False):
+    area = {"id": item.area_id, "name": item.area.name} if item.area_id else None
     data = {
         "id": item.pk, "name": item.name, "canonical_name": item.canonical_name, "aliases": item.aliases,
         "category": item.category, "kind": item.kind, "cultivar": item.cultivar, "quantity": item.quantity,
-        "age_stage": item.age_stage, "location": item.location, "notes": item.notes, "icon": item.icon,
+        "age_stage": item.age_stage, "area": area, "area_id": item.area_id,
+        "location": item.location, "location_detail": item.location, "notes": item.notes, "icon": item.icon,
     }
     if detail:
         data["next_tasks"] = [_task_json(t) for t in item.tasks.filter(status="pending")[:8]]
@@ -92,7 +99,9 @@ def api_bootstrap(request):
     return JsonResponse({
         "today": day.isoformat(), "month_name": MONTHS[day.month - 1], "completed": completed,
         "total": total, "progress": round(completed * 100 / total) if total else 0,
-        "tasks": task_groups, "items": [_item_json(i) for i in GardenItem.objects.filter(active=True)],
+        "tasks": task_groups, "items": [_item_json(i) for i in GardenItem.objects.filter(active=True).select_related("area")],
+        "areas": [{"id": area.pk, "name": area.name, "item_count": area.items.filter(active=True).count()} for area in GardenArea.objects.all()],
+        "work_categories": list(WORK_CATEGORIES),
         "settings": {"garden_name": settings.garden_name, "city": settings.city, "cultivation_zone": settings.cultivation_zone, "exposure": settings.exposure},
         "pending_proposals": ResearchProposal.objects.filter(status="pending").count(),
         "year": [{"month": m, "name": MONTHS[m-1], "open": TaskOccurrence.objects.filter(status="pending", window_start__lte=month_end(day.year, m), window_end__gte=date(day.year, m, 1)).count()} for m in range(1, 13)],
@@ -128,7 +137,8 @@ def api_items(request):
         name=data["name"].strip(), canonical_name=data.get("canonical_name", ""), aliases=data.get("aliases", []),
         category=data.get("category", ""), kind=data.get("kind", "individual"), cultivar=data.get("cultivar", ""),
         quantity=max(1, int(data.get("quantity", 1))), age_stage=data.get("age_stage", ""),
-        location=data.get("location", ""), notes=data.get("notes", ""),
+        area=GardenArea.objects.filter(pk=data.get("area_id")).first() if data.get("area_id") else None,
+        location=data.get("location_detail", data.get("location", "")), notes=data.get("notes", ""),
     )
     response = {"item": _item_json(item)}
     try:
@@ -145,6 +155,13 @@ def api_item(request, item_id):
     if request.method == "GET":
         return JsonResponse({"item": _item_json(item, True), "proposals": [_plan_json(p.plan) for p in item.proposals.filter(status="pending").order_by("-plan__version")]})
     data = _json_body(request) or {}
+    if "area_id" in data:
+        area_id = data.get("area_id")
+        if area_id and not GardenArea.objects.filter(pk=area_id).exists():
+            return JsonResponse({"error": "Området finns inte."}, status=400)
+        item.area_id = area_id or None
+    if "location_detail" in data:
+        data["location"] = data["location_detail"]
     for field in ["name", "canonical_name", "aliases", "category", "kind", "cultivar", "quantity", "age_stage", "location", "notes"]:
         if field in data:
             setattr(item, field, data[field])
@@ -192,8 +209,12 @@ def api_tasks(request):
         end = date.fromisoformat(data.get("window_end") or data["window_start"])
     except (GardenItem.DoesNotExist, KeyError, ValueError):
         return JsonResponse({"error": "Kontrollera växt och datum."}, status=400)
+    category = data.get("category", "Övrigt")
+    if category not in WORK_CATEGORIES:
+        return JsonResponse({"error": "Välj en giltig arbetskategori."}, status=400)
     task = TaskOccurrence.objects.create(
         item=item, title=data.get("title", "Egen uppgift").strip(), instructions=data.get("instructions", ""),
+        category=category,
         occurrence_key=f"manual:{timezone.now().timestamp()}:{item.pk}", season_year=start.year,
         occurrence_month=start.month, window_start=start, window_end=end, manual=True,
     )
@@ -202,7 +223,7 @@ def api_tasks(request):
 
 @require_http_methods(["GET", "PATCH"])
 def api_task(request, task_id):
-    task = get_object_or_404(TaskOccurrence.objects.select_related("item", "rule"), pk=task_id)
+    task = get_object_or_404(TaskOccurrence.objects.select_related("item", "item__area", "rule"), pk=task_id)
     if request.method == "GET":
         return JsonResponse({"task": _task_json(task)})
     data = _json_body(request) or {}
@@ -214,6 +235,10 @@ def api_task(request, task_id):
     for field in ["title", "instructions", "note"]:
         if field in data:
             setattr(task, field, data[field])
+    if "category" in data:
+        if data["category"] not in WORK_CATEGORIES:
+            return JsonResponse({"error": "Välj en giltig arbetskategori."}, status=400)
+        task.category = data["category"]
     task.save()
     return JsonResponse({"task": _task_json(task)})
 
@@ -222,6 +247,8 @@ def api_task(request, task_id):
 def api_rule(request, rule_id):
     rule = get_object_or_404(CareRule, pk=rule_id, plan__status="pending")
     data = _json_body(request) or {}
+    if "category" in data and data["category"] not in WORK_CATEGORIES:
+        return JsonResponse({"error": "Välj en giltig arbetskategori."}, status=400)
     for field in ["title", "category", "instructions", "cadence", "start_month", "end_month", "conditional"]:
         if field in data:
             setattr(rule, field, data[field])
@@ -229,6 +256,40 @@ def api_rule(request, rule_id):
         return JsonResponse({"error": "Månad måste vara 1–12."}, status=400)
     rule.save()
     return JsonResponse({"ok": True})
+
+
+@require_http_methods(["GET", "POST"])
+def api_areas(request):
+    if request.method == "GET":
+        return JsonResponse({"areas": [{"id": area.pk, "name": area.name, "item_count": area.items.filter(active=True).count()} for area in GardenArea.objects.all()]})
+    data = _json_body(request) or {}
+    name = str(data.get("name", "")).strip()
+    if not name:
+        return JsonResponse({"error": "Områdesnamn krävs."}, status=400)
+    if GardenArea.objects.filter(name__iexact=name).exists():
+        return JsonResponse({"error": "Området finns redan."}, status=400)
+    try:
+        area = GardenArea.objects.create(name=name)
+    except IntegrityError:
+        return JsonResponse({"error": "Området finns redan."}, status=400)
+    return JsonResponse({"area": {"id": area.pk, "name": area.name, "item_count": 0}}, status=201)
+
+
+@require_http_methods(["PATCH", "DELETE"])
+def api_area(request, area_id):
+    area = get_object_or_404(GardenArea, pk=area_id)
+    if request.method == "DELETE":
+        area.delete()
+        return JsonResponse({"ok": True})
+    data = _json_body(request) or {}
+    name = str(data.get("name", "")).strip()
+    if not name:
+        return JsonResponse({"error": "Områdesnamn krävs."}, status=400)
+    if GardenArea.objects.filter(name__iexact=name).exclude(pk=area.pk).exists():
+        return JsonResponse({"error": "Området finns redan."}, status=400)
+    area.name = name
+    area.save(update_fields=["name", "updated_at"])
+    return JsonResponse({"area": {"id": area.pk, "name": area.name, "item_count": area.items.filter(active=True).count()}})
 
 
 @require_http_methods(["GET", "PATCH"])

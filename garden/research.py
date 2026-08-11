@@ -1,4 +1,5 @@
 import json
+import re
 import time
 import urllib.error
 import urllib.request
@@ -8,6 +9,7 @@ from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 from .models import CarePlanVersion, CareRule, ResearchProposal, SourceReference
+from .work_categories import WORK_CATEGORIES, normalize_work_category
 
 ALLOWED_DOMAINS = ["svensktradgard.se", "slu.se", "for.se", "jordbruksverket.se", "rhs.org.uk"]
 SWEDISH_AUTHORITY_DOMAINS = {"slu.se", "jordbruksverket.se"}
@@ -15,14 +17,15 @@ SWEDISH_AUTHORITY_DOMAINS = {"slu.se", "jordbruksverket.se"}
 TASK_SCHEMA = {
     "type": "object",
     "properties": {
-        "summary": {"type": "string"},
-        "warnings": {"type": "array", "items": {"type": "string"}},
-        "uncertainties": {"type": "array", "items": {"type": "string"}},
+        "summary": {"type": "string", "minLength": 3},
+        "warnings": {"type": "array", "items": {"type": "string", "minLength": 3}},
+        "uncertainties": {"type": "array", "items": {"type": "string", "minLength": 3}},
         "tasks": {"type": "array", "items": {
             "type": "object",
             "properties": {
-                "title": {"type": "string"}, "category": {"type": "string"},
-                "instructions": {"type": "string"},
+                "title": {"type": "string", "minLength": 3},
+                "category": {"type": "string", "enum": list(WORK_CATEGORIES)},
+                "instructions": {"type": "string", "minLength": 20},
                 "cadence": {"type": "string", "enum": ["one_off", "seasonal", "monthly"]},
                 "start_month": {"type": "integer", "minimum": 1, "maximum": 12},
                 "end_month": {"type": "integer", "minimum": 1, "maximum": 12},
@@ -41,6 +44,35 @@ TASK_SCHEMA = {
 
 class ResearchError(Exception):
     pass
+
+
+def _validate_result(result):
+    required_top = {"summary", "warnings", "uncertainties", "tasks"}
+    required_task = {"title", "category", "instructions", "cadence", "start_month", "end_month", "conditional", "evidence_conflict", "source_urls"}
+    if not isinstance(result, dict) or set(result) != required_top or not isinstance(result["tasks"], list) or len(str(result["summary"]).strip()) < 3:
+        raise ResearchError("AI-svaret följde inte det strikta schemat.")
+    for task in result["tasks"]:
+        if (
+            not isinstance(task, dict)
+            or set(task) != required_task
+            or not isinstance(task["title"], str)
+            or not isinstance(task["instructions"], str)
+            or task["category"] not in WORK_CATEGORIES
+            or task["cadence"] not in {"one_off", "seasonal", "monthly"}
+            or not 1 <= task["start_month"] <= 12
+            or not 1 <= task["end_month"] <= 12
+            or len(task["title"].strip()) < 3
+            or len(task["instructions"].strip()) < 20
+        ):
+            raise ResearchError("AI-svaret följde inte det strikta schemat.")
+        title = task["title"].strip().casefold()
+        if re.match(r"^(avstå|undvik|använd inte|behandla inte|ta inte|gör inte|låt bli|ingen)\b", title):
+            raise ResearchError("AI-svaret innehöll en varning som egen uppgift.")
+        instructions = task["instructions"].strip().casefold()
+        if re.match(r"^(avstå|undvik|använd inte|behandla inte|ta inte|gör inte|låt bli)\b", instructions) and not re.search(r"\b(vattna|ta bort|plocka|bind|lägg|rensa|kontrollera|inspektera|klipp|gallra|skörda|ge)\b", instructions):
+            raise ResearchError("AI-svaret innehöll ett icke-göra-råd som egen uppgift.")
+        if re.match(r"^(bedöm|kontrollera)\s+(behovet av|om .+ behöver)\b", title):
+            raise ResearchError("AI-svaret delade upp bedömning och åtgärd.")
 
 
 def _domain(url):
@@ -72,6 +104,8 @@ def call_openai(item, garden):
 Trädgården ligger i {garden.city}, odlingszon {garden.cultivation_zone}, {garden.exposure}. Posten är {item.kind}, antal {item.quantity}, stadium {item.age_stage or 'okänt'}, placering {item.location or 'ej angiven'}.
 Egen trädgårdsanteckning: {item.notes or 'Ingen anteckning angiven'}
 Behandla anteckningen som en lokal observation, inte som en bekräftad diagnos. När den är relevant får du föreslå en försiktig, villkorad uppgift för kontroll, bedömning eller åtgärd. Sätt tydliga osäkerheter och föreslå inte åtgärder som förutsätter att en orsak är fastställd.
+Använd exakt en av dessa arbetskategorier: {', '.join(WORK_CATEGORIES)}. Skapa få, självständigt genomförbara arbetsmoment. Slå ihop ”bedöm behovet” och ”utför vid behov” till en uppgift där instruktionen både säger vad som ska kontrolleras och vad som görs om villkoret är uppfyllt. Lägg negativa råd som ”avstå från behandling”, varningar och villkor i warnings eller instruktionen, aldrig som egna uppgifter. Använd monthly endast när en konkret återkommande kontroll eller åtgärd verkligen ska utföras varje månad.
+Var växtspecifik: beskriv exempelvis vilka grenar eller skott som ska tas bort och vad som ska lämnas kvar. Titeln ska vara kort och instruktionen komplett nog att utföra utan att gissa.
 Prioritera svenska källor och komplettera bara med RHS. Ange realistiska månadsfönster och markera evidence_conflict när källorna motsäger varandra eller underlaget är tunt. Två samstämmiga källor är bäst. Kemiskt växtskydd kräver aktuell svensk myndighetskälla. Exakta gödseldoser ska vara villkorade när jord, sort eller produkt är okänd. Kopiera inte artikeltext; sammanfatta."""
     request_body = {
         "model": settings.OPENAI_MODEL,
@@ -103,10 +137,7 @@ Prioritera svenska källor och komplettera bara med RHS. Ange realistiska månad
 def create_research_proposal(item, garden, response_payload=None):
     payload = response_payload or call_openai(item, garden)
     result, raw_sources = _extract_response(payload)
-    required_top = {"summary", "warnings", "uncertainties", "tasks"}
-    required_task = {"title", "category", "instructions", "cadence", "start_month", "end_month", "conditional", "evidence_conflict", "source_urls"}
-    if set(result) != required_top or not isinstance(result["tasks"], list) or any(set(task) != required_task or task["cadence"] not in {"one_off", "seasonal", "monthly"} or not 1 <= task["start_month"] <= 12 or not 1 <= task["end_month"] <= 12 for task in result["tasks"]):
-        raise ResearchError("AI-svaret följde inte det strikta schemat.")
+    _validate_result(result)
     replaced_at = timezone.now()
     older_pending = ResearchProposal.objects.filter(item=item, status="pending")
     CarePlanVersion.objects.filter(proposal__in=older_pending).update(status="superseded", reviewed_at=replaced_at)
@@ -133,7 +164,7 @@ def create_research_proposal(item, garden, response_payload=None):
         source_validated = bool(validated) and (not chemical or any(_domain(u) in SWEDISH_AUTHORITY_DOMAINS for u in validated))
         nutrition = any(word in (task["title"] + " " + task["instructions"]).lower() for word in ["gödsel", "näring", "npk", "gram", "dos"])
         CareRule.objects.create(
-            item=item, plan=plan, title=task["title"], category=task["category"], instructions=task["instructions"],
+            item=item, plan=plan, title=task["title"], category=normalize_work_category(task["category"]), instructions=task["instructions"],
             cadence=task["cadence"], start_month=task["start_month"], end_month=task["end_month"],
             conditional=task["conditional"] or nutrition, confidence=confidence, source_urls=validated,
             source_validated=source_validated, active=False,

@@ -4,7 +4,8 @@ Privat svensk trädgårds-PWA för en gemensam trädgård i Karlskrona, odlingsz
 
 ## Funktioner
 
-- Månadsöversikt med öppna, försenade och kommande uppgifter samt slutför, hoppa över och ångra.
+- Växlingsbara arbetsrundor efter jobb eller användarskapade trädgårdsområden, med individuellt slutförande och ihågkommet vyval.
+- Fasta arbetskategorier, platsdetaljer och en enkel genomgång för att placera växter utan automatisk gissning.
 - Årshjul, flexibla växtposter, lokalt sök och manuella uppgifter.
 - Källbelagda AI-förslag via OpenAI Responses och webbsökning. Allt måste granskas; inga AI-uppgifter aktiveras automatiskt.
 - Installerbar PWA och enhetsunika Web Push-val, avstängda som standard.
@@ -31,3 +32,9 @@ Se `.env.example`. OpenAI-nyckeln är valfri; alla manuella funktioner fungerar 
 Systemd-filer och driftsskript ligger i `systemd/` och `scripts/`. Produktionen använder en privat Tailscale Serve-adress på HTTPS-port 10443. Autodeploy följer `main`, vägrar vid smutsig checkout, säkerhetskopierar databasen, migrerar, samlar statik och kräver godkänd hälsokontroll.
 
 Privat PWA-adress: `https://garden.example.com:10443/`
+
+Efter migreringen till arbetsrundor ersätts markerade äldre väntande analyser säkert och återupptagningsbart med:
+
+```sh
+python manage.py replace_pending_research
+```

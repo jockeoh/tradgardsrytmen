@@ -3,6 +3,7 @@ from datetime import date, timedelta
 from django.db import transaction
 from django.utils import timezone
 from .models import CareRule, TaskOccurrence
+from .work_categories import normalize_work_category
 
 
 def month_end(year, month):
@@ -68,6 +69,7 @@ def materialize_rule(rule, through_year=None, not_before=None):
                 occurrence_key=key,
                 defaults={
                     "rule": rule, "item": rule.item, "title": rule.title,
+                    "category": normalize_work_category(rule.category, f"{rule.title} {rule.instructions}"),
                     "instructions": rule.instructions, "season_year": season_year,
                     "occurrence_month": month, "window_start": window_start,
                     "window_end": window_end,
@@ -117,7 +119,7 @@ def dashboard_for(day=None):
     day = day or timezone.localdate()
     first = day.replace(day=1)
     last = month_end(day.year, day.month)
-    pending = TaskOccurrence.objects.filter(status="pending").select_related("item", "rule")
+    pending = TaskOccurrence.objects.filter(status="pending").select_related("item", "item__area", "rule")
     return {
         "overdue": pending.filter(window_end__lt=first),
         "due": pending.filter(window_start__lte=day, window_end__gte=first),
