@@ -315,11 +315,13 @@ class SeedGardenTests(TestCase):
         garden.save(update_fields=["city"])
         tomato = GardenItem.objects.get(name="Tomater")
         tomato.name = "Tomat"
+        tomato.kind = "individual"
+        tomato.cultivar = "Ravello"
         tomato.notes = "Min egen anteckning"
-        tomato.save(update_fields=["name", "notes"])
+        tomato.save(update_fields=["name", "kind", "cultivar", "notes"])
         call_command("seed_garden", verbosity=0)
         garden.refresh_from_db()
         tomato.refresh_from_db()
         self.assertEqual(garden.city, "Ronneby")
         self.assertEqual(tomato.notes, "Min egen anteckning")
-        self.assertEqual(GardenItem.objects.filter(canonical_name="Tomat", kind="bed", icon="tomato").count(), 1)
+        self.assertEqual(GardenItem.objects.filter(canonical_name="Tomat", icon="tomato").count(), 1)

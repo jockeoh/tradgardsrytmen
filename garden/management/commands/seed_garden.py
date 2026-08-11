@@ -17,7 +17,7 @@ class Command(BaseCommand):
     def handle(self, *args, **options):
         GardenSettings.objects.get_or_create(pk=1, defaults={"garden_name": "Vår trädgård", "city": "Karlskrona", "cultivation_zone": "1", "exposure": "Skyddat, kustnära läge"})
         for row in STARTERS:
-            identity = Q(name=row["name"]) | Q(canonical_name=row["canonical_name"], kind=row["kind"], icon=row["icon"])
+            identity = Q(name=row["name"]) | Q(canonical_name=row["canonical_name"], icon=row["icon"])
             if not GardenItem.objects.filter(identity).exists():
                 GardenItem.objects.create(**row)
         self.stdout.write(self.style.SUCCESS("Trädgården är grundfylld."))
