@@ -33,7 +33,7 @@ Systemd-filer och driftsskript ligger i `systemd/` och `scripts/`. Produktionen 
 
 Privat PWA-adress: `https://garden.example.com:10443/`
 
-Efter migreringen till arbetsrundor ersätts markerade äldre väntande analyser säkert och återupptagningsbart med:
+Efter migreringen till arbetsrundor ersätter autodeploy markerade äldre väntande analyser säkert och återupptagningsbart. Samma idempotenta rutin kan vid behov köras manuellt med:
 
 ```sh
 python manage.py replace_pending_research

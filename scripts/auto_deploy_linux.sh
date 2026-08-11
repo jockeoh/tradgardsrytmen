@@ -61,6 +61,7 @@ systemctl restart tradgardsrytmen.service
 
 for _ in {1..20}; do
   if curl --fail --silent --show-error http://127.0.0.1:10443/health/ >/dev/null; then
+    runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" replace_pending_research
     git_as_clawd rev-parse HEAD > "$STATE_DIR/deployed_commit"
     chown tradgardsrytmen:tradgardsrytmen "$STATE_DIR/deployed_commit"
     exit 0
