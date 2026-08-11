@@ -1,6 +1,7 @@
 import json
 from datetime import date, datetime, timedelta
 from unittest.mock import patch
+from django.core.management import call_command
 from django.test import Client, TestCase, override_settings
 from django.utils import timezone
 from .models import CarePlanVersion, CareRule, GardenArea, GardenItem, GardenSettings, PushSubscription, ReminderDelivery, ResearchProposal, TaskOccurrence
@@ -304,3 +305,21 @@ class ReminderTests(TestCase):
         self.assertEqual(send_due_reminders(now),0)
         self.assertEqual(ReminderDelivery.objects.count(),1)
         self.assertEqual(mocked_send.call_count,1)
+
+
+class SeedGardenTests(TestCase):
+    def test_seed_preserves_profile_and_renamed_starter_without_duplicate(self):
+        call_command("seed_garden", verbosity=0)
+        garden = GardenSettings.load()
+        garden.city = "Ronneby"
+        garden.save(update_fields=["city"])
+        tomato = GardenItem.objects.get(name="Tomater")
+        tomato.name = "Tomat"
+        tomato.notes = "Min egen anteckning"
+        tomato.save(update_fields=["name", "notes"])
+        call_command("seed_garden", verbosity=0)
+        garden.refresh_from_db()
+        tomato.refresh_from_db()
+        self.assertEqual(garden.city, "Ronneby")
+        self.assertEqual(tomato.notes, "Min egen anteckning")
+        self.assertEqual(GardenItem.objects.filter(canonical_name="Tomat", kind="bed", icon="tomato").count(), 1)
