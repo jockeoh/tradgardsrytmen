@@ -1,4 +1,5 @@
 import json
+import importlib
 from datetime import date, datetime, timedelta
 from unittest.mock import patch
 from django.core.management import call_command
@@ -8,7 +9,7 @@ from .models import CarePlanVersion, CareRule, GardenArea, GardenItem, GardenSet
 from .push import send_due_reminders
 from .research import ResearchError, approve_proposal, create_research_proposal
 from .tasks import archive_pre_activation_backlog, dashboard_for, materialize_rule, months_for_season
-from .work_categories import WORK_CATEGORIES, normalize_work_category
+from .work_categories import WORK_CATEGORIES, normalize_work_category, suggested_work_category
 
 
 class TaskMaterializationTests(TestCase):
@@ -211,6 +212,18 @@ class ProposalTests(TestCase):
         with self.assertRaisesRegex(ResearchError, "icke-göra-råd"):
             create_research_proposal(self.item, self.garden, instruction_only)
 
+    def test_semantically_wrong_fixed_category_is_rejected(self):
+        mismatched = self.response()
+        body = json.loads(mismatched["output"][1]["content"][0]["text"])
+        body["tasks"][0].update({
+            "title":"Sommarinspektera frukt och krona",
+            "category":"Vattna",
+            "instructions":"Kontrollera vattenstress, fruktmängd, grenskador och tecken på skadegörare.",
+        })
+        mismatched["output"][1]["content"][0]["text"] = json.dumps(body)
+        with self.assertRaisesRegex(ResearchError, "huvudhandling"):
+            create_research_proposal(self.item, self.garden, mismatched)
+
     @override_settings(OPENAI_API_KEY="test-key")
     @patch("garden.research.time.sleep")
     @patch("garden.research.urllib.request.urlopen")
@@ -325,3 +338,30 @@ class SeedGardenTests(TestCase):
         self.assertEqual(garden.city, "Ronneby")
         self.assertEqual(tomato.notes, "Min egen anteckning")
         self.assertEqual(GardenItem.objects.filter(canonical_name="Tomat", icon="tomato").count(), 1)
+
+
+class WorkCategoryTests(TestCase):
+    def test_title_action_wins_over_incidental_words_in_instructions(self):
+        self.assertEqual(suggested_work_category("Sommarinspektera frukt och krona"), "Kontrollera")
+        self.assertEqual(suggested_work_category("Följ skadegörare och svampsjukdomar"), "Kontrollera")
+        self.assertEqual(normalize_work_category("äldre kategori", "Kontrollera läge och jord", "Se om vatten blir stående."), "Kontrollera")
+
+    def test_specific_work_subjects_are_classified_before_generic_assessment(self):
+        self.assertEqual(suggested_work_category("Bedöm behov av gödsling först efter tillväxtkontroll"), "Gödsla")
+        self.assertEqual(suggested_work_category("Förbättra jord och marktäck"), "Jord och ogräs")
+
+    def test_repair_updates_open_snapshot_and_archives_only_pending_to_dont(self):
+        item = GardenItem.objects.create(name="Testväxt")
+        inspect = CareRule.objects.create(item=item, title="Sommarinspektera frukt och krona", category="Vattna", active=True)
+        inspect_task = TaskOccurrence.objects.create(item=item, rule=inspect, title=inspect.title, category="Vattna", occurrence_key="repair:inspect", season_year=2026, occurrence_month=8, window_start=date(2026,8,1), window_end=date(2026,8,31))
+        negative = CareRule.objects.create(item=item, title="Avstå från kraftig beskärning", category="Beskära och binda upp", active=True)
+        pending = TaskOccurrence.objects.create(item=item, rule=negative, title=negative.title, category=negative.category, occurrence_key="repair:negative", season_year=2026, occurrence_month=8, window_start=date(2026,8,1), window_end=date(2026,8,31), note="Bevara min notering")
+        completed = TaskOccurrence.objects.create(item=item, rule=negative, title=negative.title, category=negative.category, occurrence_key="repair:history", season_year=2025, occurrence_month=8, window_start=date(2025,8,1), window_end=date(2025,8,31), status="completed")
+        from django.apps import apps
+        repair = importlib.import_module("garden.migrations.0007_repair_work_categories_and_to_donts")
+        repair.repair_categories(apps, None)
+        inspect.refresh_from_db(); inspect_task.refresh_from_db(); negative.refresh_from_db(); pending.refresh_from_db(); completed.refresh_from_db()
+        self.assertEqual((inspect.category, inspect_task.category), ("Kontrollera", "Kontrollera"))
+        self.assertFalse(negative.active)
+        self.assertEqual((pending.status, pending.note), ("skipped", "Bevara min notering"))
+        self.assertEqual(completed.status, "completed")

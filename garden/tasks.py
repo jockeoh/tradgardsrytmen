@@ -69,7 +69,7 @@ def materialize_rule(rule, through_year=None, not_before=None):
                 occurrence_key=key,
                 defaults={
                     "rule": rule, "item": rule.item, "title": rule.title,
-                    "category": normalize_work_category(rule.category, f"{rule.title} {rule.instructions}"),
+                    "category": normalize_work_category(rule.category, rule.title, rule.instructions),
                     "instructions": rule.instructions, "season_year": season_year,
                     "occurrence_month": month, "window_start": window_start,
                     "window_end": window_end,

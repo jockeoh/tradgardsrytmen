@@ -24,7 +24,7 @@ def _json_body(request):
 
 
 def _task_json(task):
-    category = normalize_work_category(task.category or (task.rule.category if task.rule else ""), f"{task.title} {task.instructions}")
+    category = normalize_work_category(task.category or (task.rule.category if task.rule else ""), task.title, task.instructions)
     area = {"id": task.item.area_id, "name": task.item.area.name} if task.item.area_id else None
     return {
         "id": task.pk, "title": task.title, "instructions": task.instructions, "status": task.status,

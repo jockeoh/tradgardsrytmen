@@ -9,7 +9,7 @@ from django.db import transaction
 from django.db.models import Max
 from django.utils import timezone
 from .models import CarePlanVersion, CareRule, ResearchProposal, SourceReference
-from .work_categories import WORK_CATEGORIES, normalize_work_category
+from .work_categories import WORK_CATEGORIES, normalize_work_category, suggested_work_category
 
 ALLOWED_DOMAINS = ["svensktradgard.se", "slu.se", "for.se", "jordbruksverket.se", "rhs.org.uk"]
 SWEDISH_AUTHORITY_DOMAINS = {"slu.se", "jordbruksverket.se"}
@@ -66,6 +66,9 @@ def _validate_result(result):
         ):
             raise ResearchError("AI-svaret följde inte det strikta schemat.")
         title = task["title"].strip().casefold()
+        suggested = suggested_work_category(task["title"])
+        if suggested and task["category"] != suggested:
+            raise ResearchError("AI-svarets arbetskategori stämde inte med uppgiftens huvudhandling.")
         if re.match(r"^(avstå|undvik|använd inte|behandla inte|ta inte|gör inte|låt bli|ingen)\b", title):
             raise ResearchError("AI-svaret innehöll en varning som egen uppgift.")
         instructions = task["instructions"].strip().casefold()
@@ -164,7 +167,7 @@ def create_research_proposal(item, garden, response_payload=None):
         source_validated = bool(validated) and (not chemical or any(_domain(u) in SWEDISH_AUTHORITY_DOMAINS for u in validated))
         nutrition = any(word in (task["title"] + " " + task["instructions"]).lower() for word in ["gödsel", "näring", "npk", "gram", "dos"])
         CareRule.objects.create(
-            item=item, plan=plan, title=task["title"], category=normalize_work_category(task["category"]), instructions=task["instructions"],
+            item=item, plan=plan, title=task["title"], category=normalize_work_category(task["category"], task["title"], task["instructions"]), instructions=task["instructions"],
             cadence=task["cadence"], start_month=task["start_month"], end_month=task["end_month"],
             conditional=task["conditional"] or nutrition, confidence=confidence, source_urls=validated,
             source_validated=source_validated, active=False,
