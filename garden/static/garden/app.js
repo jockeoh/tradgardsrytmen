@@ -101,6 +101,9 @@ function renderAreas(data) {
 
 function render(data) {
   state.data = data;
+  $("#garden-name").textContent = data.settings.garden_name;
+  $("#garden-city").textContent = data.settings.city;
+  $("#garden-exposure").textContent = `Zon ${data.settings.cultivation_zone} · ${data.settings.exposure}`;
   $("#hero-date").textContent = new Date(data.today + "T12:00:00").toLocaleDateString("sv-SE", {weekday:"long", day:"numeric", month:"long"});
   $("#hero-month").textContent = data.month_name[0].toUpperCase() + data.month_name.slice(1);
   $("#progress-value").textContent = `${data.progress}%`;

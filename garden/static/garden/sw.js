@@ -1,4 +1,4 @@
-const CACHE = "tradgardsrytmen-v2";
+const CACHE = "tradgardsrytmen-v3";
 const ASSETS = ["/", "/static/garden/app.css", "/static/garden/task-detail.css", "/static/garden/work-rounds.css", "/static/garden/app.js", "/static/garden/manifest.webmanifest"];
 self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS))));
 self.addEventListener("activate", event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))));

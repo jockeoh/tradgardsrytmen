@@ -1,10 +1,14 @@
 import os
 from pathlib import Path
+from django.core.exceptions import ImproperlyConfigured
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SECRET_KEY = os.environ.get("TRADGARDSRYTMEN_SECRET_KEY", "dev-only-change-me")
 DEBUG = os.environ.get("TRADGARDSRYTMEN_DEBUG", "1") == "1"
+if not DEBUG and (len(SECRET_KEY) < 32 or SECRET_KEY.startswith(("dev-only", "replace-"))):
+    raise ImproperlyConfigured("Set a generated TRADGARDSRYTMEN_SECRET_KEY when debug is disabled.")
+
 ALLOWED_HOSTS = [h.strip() for h in os.environ.get("TRADGARDSRYTMEN_ALLOWED_HOSTS", "localhost,127.0.0.1").split(",") if h.strip()]
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.environ.get("TRADGARDSRYTMEN_CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()]
 

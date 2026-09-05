@@ -8,3 +8,14 @@ staticfiles/
 *.sqlite3-*
 .tmp-data/
 backups/
+
+# Local data and signing material
+*.sqlite3
+*.sqlite
+*.db
+.env.*
+!.env.example
+vapid_private.pem
+vapid_private.lock
+*.key
+*.pem
