@@ -36,4 +36,34 @@ The web service binds to `127.0.0.1:10443`; the Tailscale unit exposes it within
 
 Set a generated `TRADGARDSRYTMEN_SECRET_KEY`, disable debug, and configure the allowed host and trusted HTTPS origin for your installation. The development secret is rejected when debug is off. Keep the environment file readable only by the service administrator.
 
-AI research and reminder delivery require external services and are not exercised against live accounts by the test suite. The annual overview links back to the current task view; it is not a historical month browser.
+AI research and reminder delivery require external services and are not exercised against live accounts by the test suite. The annual overview loads the selected month and year, separating planned occurrences from recorded history.
+
+
+## Care identity migration (local verification before deployment)
+
+Back up before migrating. Migrations 0008–0010 add stable plant/moment/scope identities,
+explicit one-off windows, advice classification and archival metadata. Existing rules
+are marked for review rather than silently reclassified. Migration 0010 records explicit
+identity refinements/merges so history and exclusions can follow the reviewed work.
+Read endpoints never create tasks.
+
+Run `python manage.py clean_care_content --report /path/to/inventory.json` to inventory.
+Run the same command with `--apply` only against the intended database: it takes a separate
+SQLite backup with an integrity check, archives exact automatic duplicates and expired
+open automatic occurrences, and creates review proposals for ambiguous existing rules.
+Manual tasks, completed/skipped history and all notes are preserved. Running it again
+is safe. The nightly materializer archives expired/duplicate occurrences and generates
+only active planned rules; it never runs AI research.
+
+Approvals require the current comparison token and an explicit explanation for unresolved
+overlap candidates. SQLite write serialization and unique occurrence slots prevent repeated
+approvals/need requests from creating duplicate work. Work identities are selected explicitly;
+prose similarity identifies review candidates and never silently merges subgroups. Selecting an
+existing work uses its exact scope. Refining a subgroup or merging an old identity is a separate,
+audited choice whose source/target mapping is stored in the approval receipt.
+
+Normal autodeploy takes the pre-migration backup, migrates, and then runs the idempotent cleanup
+with an additional integrity-checked backup and a revision-specific report in the state directory.
+It does not run `replace_pending_research`; that command may call the research service and must
+remain a separately authorized operation. After release, verify the deployed revision, health,
+review queue and current/month views.

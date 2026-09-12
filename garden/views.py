@@ -1,16 +1,17 @@
 import json
 from datetime import date
-from django.db import IntegrityError
-from django.db.models import Q
+from django.db import IntegrityError, transaction
+from django.db.models import Q, F
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.contrib.staticfiles import finders
-from .models import CarePlanVersion, CareRule, GardenArea, GardenItem, GardenSettings, PushSubscription, ResearchProposal, TaskOccurrence
+from .models import CarePlanVersion, CareRule, GardenArea, GardenItem, GardenSettings, PushSubscription, ResearchProposal, TaskOccurrence, WorkIdentity
 from .research import ResearchError, approve_proposal, create_research_proposal
-from .tasks import dashboard_for, materialize_active_rules, month_end
+from .tasks import dashboard_for, visible_pending, month_end, needs_now, set_excluded
+from .care_contract import validate_rule, CareValidationError, plan_comparison, canonical_scope
 from .work_categories import WORK_CATEGORIES, normalize_work_category
 
 MONTHS = ["januari", "februari", "mars", "april", "maj", "juni", "juli", "augusti", "september", "oktober", "november", "december"]
@@ -18,7 +19,8 @@ MONTHS = ["januari", "februari", "mars", "april", "maj", "juni", "juli", "august
 
 def _json_body(request):
     try:
-        return json.loads(request.body or "{}")
+        value = json.loads(request.body or "{}")
+        return value if isinstance(value, dict) else None
     except json.JSONDecodeError:
         return None
 
@@ -27,6 +29,10 @@ def _task_json(task):
     category = normalize_work_category(task.category or (task.rule.category if task.rule else ""), task.title, task.instructions)
     area = {"id": task.item.area_id, "name": task.item.area.name} if task.item.area_id else None
     return {
+        "work_id": task.work_id, "scope": task.work.scope if task.work else "",
+        "relevance_reason": task.rule.relevance_reason if task.rule else "",
+        "archive_reason": task.archive_reason, "note": task.note,
+        "completed_at": task.completed_at.isoformat() if task.completed_at else None,
         "id": task.pk, "title": task.title, "instructions": task.instructions, "status": task.status,
         "category": category, "area": area, "location_detail": task.item.location,
         "item": {"id": task.item_id, "name": task.item.name}, "start": task.window_start.isoformat(),
@@ -45,11 +51,28 @@ def _item_json(item, detail=False):
         "location": item.location, "location_detail": item.location, "notes": item.notes, "icon": item.icon,
     }
     if detail:
-        data["next_tasks"] = [_task_json(t) for t in item.tasks.filter(status="pending")[:8]]
+        data["next_tasks"] = [_task_json(t) for t in visible_pending().filter(item=item)]
+        data["history"] = [_task_json(t) for t in item.tasks.exclude(status="pending").select_related("rule", "work").order_by("-updated_at")]
+        data["advice"] = [_rule_json(r) for r in item.care_rules.filter(active=True, advice_kind__in=["on_demand", "general"], work__excluded_at__isnull=True).select_related("work")]
+        data["excluded"] = [{"id": w.pk, "action_key": w.action_key, "scope": w.scope, "title": w.rules.order_by("-pk").first().title if w.rules.exists() else w.action_key} for w in item.works.filter(merged_into=None).exclude(excluded_at=None)]
         plan = item.plans.filter(status="active").first() or item.plans.filter(status="pending").first()
         if plan:
             data["plan"] = _plan_json(plan)
     return data
+
+
+def _rule_json(r):
+    return {"id": r.pk, "title": r.title, "category": r.category, "instructions": r.instructions,
+        "cadence": r.cadence, "start_month": r.start_month, "end_month": r.end_month,
+        "conditional": r.conditional, "confidence": r.confidence, "source_validated": r.source_validated,
+        "source_urls": r.source_urls, "work_id": r.work_id, "action_key": r.work.action_key if r.work else "",
+        "scope": r.work.scope if r.work else "", "advice_kind": r.advice_kind,
+        "relevance_reason": r.relevance_reason, "need_condition": r.need_condition,
+        "evidence_conflict": r.evidence_conflict, "identity_source_id": r.identity_source_id,
+        "identity_change_kind": r.identity_change_kind,
+        "one_off_date": str(r.one_off_date or ""), "one_off_end": str(r.one_off_end or ""),
+        "item": {"id": r.item_id, "name": r.item.name},
+        "works": [{"id": w.pk, "scope": w.scope, "title": w.rules.order_by("-pk").first().title if w.rules.exists() else w.action_key} for w in r.item.works.filter(merged_into=None)]}
 
 
 def _plan_json(plan):
@@ -59,12 +82,8 @@ def _plan_json(plan):
         "warnings": plan.warnings, "uncertainties": plan.uncertainties,
         "proposal_id": proposal.pk if proposal else None,
         "sources": [{"title": s.title, "url": s.url, "domain": s.domain} for s in plan.sources.all()],
-        "rules": [{
-            "id": r.pk, "title": r.title, "category": r.category, "instructions": r.instructions,
-            "cadence": r.cadence, "start_month": r.start_month, "end_month": r.end_month,
-            "conditional": r.conditional, "confidence": r.confidence, "source_validated": r.source_validated,
-            "source_urls": r.source_urls,
-        } for r in plan.rules.all()],
+        "comparison": plan_comparison(plan) if plan.status == "pending" else None,
+        "rules": [_rule_json(r) for r in plan.rules.select_related("work").all()],
     }
 
 
@@ -89,7 +108,6 @@ def service_worker(request):
 
 @require_GET
 def api_bootstrap(request):
-    materialize_active_rules()
     day = timezone.localdate()
     board = dashboard_for(day)
     completed = board.pop("completed")
@@ -102,9 +120,10 @@ def api_bootstrap(request):
         "tasks": task_groups, "items": [_item_json(i) for i in GardenItem.objects.filter(active=True).select_related("area")],
         "areas": [{"id": area.pk, "name": area.name, "item_count": area.items.filter(active=True).count()} for area in GardenArea.objects.all()],
         "work_categories": list(WORK_CATEGORIES),
+        "advice": [_rule_json(r) for r in CareRule.objects.filter(active=True, item__active=True, advice_kind="on_demand", work__excluded_at__isnull=True).select_related("work", "item")],
         "settings": {"garden_name": settings.garden_name, "city": settings.city, "cultivation_zone": settings.cultivation_zone, "exposure": settings.exposure},
         "pending_proposals": ResearchProposal.objects.filter(status="pending").count(),
-        "year": [{"month": m, "name": MONTHS[m-1], "open": TaskOccurrence.objects.filter(status="pending", window_start__lte=month_end(day.year, m), window_end__gte=date(day.year, m, 1)).count()} for m in range(1, 13)],
+        "year": [{"month": m, "name": MONTHS[m-1], "open": visible_pending().filter( window_start__lte=month_end(day.year, m), window_end__gte=date(day.year, m, 1)).count()} for m in range(1, 13)],
     })
 
 
@@ -194,9 +213,12 @@ def api_proposal(request, proposal_id):
 
 @require_POST
 def api_approve_proposal(request, proposal_id):
-    proposal = get_object_or_404(ResearchProposal, pk=proposal_id, status="pending")
+    proposal = get_object_or_404(ResearchProposal, pk=proposal_id)
     data = _json_body(request) or {}
-    selected = approve_proposal(proposal, [int(v) for v in data.get("rule_ids", [])])
+    try:
+        selected = approve_proposal(proposal, [int(v) for v in data.get("rule_ids", [])], data.get("comparison_token"), data.get("resolutions"))
+    except (ResearchError, ValueError, TypeError) as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
     return JsonResponse({"ok": True, "approved": len(selected)})
 
 
@@ -209,6 +231,8 @@ def api_tasks(request):
         end = date.fromisoformat(data.get("window_end") or data["window_start"])
     except (GardenItem.DoesNotExist, KeyError, ValueError):
         return JsonResponse({"error": "Kontrollera växt och datum."}, status=400)
+    if end < start:
+        return JsonResponse({"error": "Slutdatum måste vara efter startdatum."}, status=400)
     category = data.get("category", "Övrigt")
     if category not in WORK_CATEGORIES:
         return JsonResponse({"error": "Välj en giltig arbetskategori."}, status=400)
@@ -222,12 +246,21 @@ def api_tasks(request):
 
 
 @require_http_methods(["GET", "PATCH"])
+@transaction.atomic
 def api_task(request, task_id):
     task = get_object_or_404(TaskOccurrence.objects.select_related("item", "item__area", "rule"), pk=task_id)
     if request.method == "GET":
         return JsonResponse({"task": _task_json(task)})
+    GardenItem.objects.filter(pk=task.item_id).update(active=F("active"))
+    task.refresh_from_db()
     data = _json_body(request) or {}
     status = data.get("status")
+    if task.status == "archived" and status:
+        return JsonResponse({"error": "Arkiverade tillfällen bevaras som historik."}, status=409)
+    if status == "pending" and (task.archive_reason or (task.work_id and task.work.excluded_at)):
+        return JsonResponse({"error": "Arkiverade eller bortvalda arbeten kan inte återöppnas här."}, status=409)
+    if status == "pending" and task.work_id and task.rule and task.rule.advice_kind == "on_demand" and task.work.occurrences.filter(status="pending").exclude(pk=task.pk).exists():
+        return JsonResponse({"error": "Ett senare behov är redan öppet för arbetet."}, status=409)
     if status in {"pending", "completed", "skipped"}:
         task.status = status
         task.completed_at = timezone.now() if status == "completed" else None
@@ -244,18 +277,110 @@ def api_task(request, task_id):
 
 
 @require_http_methods(["PATCH"])
+@transaction.atomic
 def api_rule(request, rule_id):
     rule = get_object_or_404(CareRule, pk=rule_id, plan__status="pending")
     data = _json_body(request) or {}
-    if "category" in data and data["category"] not in WORK_CATEGORIES:
-        return JsonResponse({"error": "Välj en giltig arbetskategori."}, status=400)
-    for field in ["title", "category", "instructions", "cadence", "start_month", "end_month", "conditional"]:
-        if field in data:
-            setattr(rule, field, data[field])
-    if not 1 <= int(rule.start_month) <= 12 or not 1 <= int(rule.end_month) <= 12:
-        return JsonResponse({"error": "Månad måste vara 1–12."}, status=400)
-    rule.save()
-    return JsonResponse({"ok": True})
+    try:
+        with transaction.atomic():
+            for field in ["title", "category", "instructions", "cadence", "start_month", "end_month", "advice_kind", "relevance_reason", "need_condition", "conditional", "source_urls", "evidence_conflict"]:
+                if field in data:
+                    setattr(rule, field, data[field])
+            for field in ["one_off_date", "one_off_end"]:
+                if field in data:
+                    setattr(rule, field, date.fromisoformat(data[field]) if data[field] else None)
+            original = rule.identity_source or rule.work
+            mode = data.get("identity_mode")
+            if mode is None:
+                mode = "existing"
+            if mode not in {"existing", "refine", "merge", "new"}:
+                raise CareValidationError("Välj hur arbetsidentiteten ska hanteras.")
+            chosen = None
+            if mode != "new":
+                chosen = WorkIdentity.objects.filter(pk=data.get("work_id", rule.work_id), item=rule.item, merged_into=None).first()
+                if not chosen:
+                    raise CareValidationError("Välj ett aktivt arbete på samma växt.")
+            if mode == "existing":
+                target, identity_source = chosen, None
+            elif mode == "refine":
+                scope = canonical_scope(str(data.get("scope", "")))
+                if not scope or scope == canonical_scope(chosen.scope):
+                    raise CareValidationError("Ange en ny, tydligare undergrupp.")
+                target, _ = WorkIdentity.objects.get_or_create(item=rule.item, action_key=chosen.action_key, scope=scope)
+                identity_source = chosen
+            elif mode == "merge":
+                if not original or original.pk == chosen.pk:
+                    raise CareValidationError("Välj ett annat befintligt arbete att slå ihop med.")
+                target, identity_source = chosen, original
+            else:
+                from uuid import uuid4
+                scope = canonical_scope(str(data.get("scope", "")))
+                target = WorkIdentity.objects.create(item=rule.item, action_key=f"manual-{uuid4().hex}", scope=scope)
+                identity_source = None
+            action, scope = target.action_key, canonical_scope(target.scope)
+            import re
+            if not re.fullmatch(r"[a-z0-9][a-z0-9-]{0,99}", action) or not scope or len(scope) > 160:
+                raise CareValidationError("Ange en arbetsnyckel och berörd undergrupp.")
+            rule.work, rule.identity_source = target, identity_source
+            rule.identity_change_kind = mode if mode in {"refine", "merge"} else ""
+            if type(rule.conditional) is not bool or type(rule.evidence_conflict) is not bool:
+                raise CareValidationError("Villkor och källkonflikt måste vara ja eller nej.")
+            if not isinstance(rule.source_urls, list) or any(not isinstance(u, str) for u in rule.source_urls):
+                raise CareValidationError("Kontrollera källorna.")
+            consulted = set(rule.plan.sources.values_list("url", flat=True))
+            # Cleanup proposals retain the original already verified source list.
+            if rule.plan.source_type == "cleanup":
+                consulted.update(CareRule.objects.get(pk=rule.pk).source_urls)
+            rule.source_validated = bool(rule.source_urls) and all(u.rstrip('/') in {x.rstrip('/') for x in consulted} for u in rule.source_urls)
+            from .research import _domain, SWEDISH_AUTHORITY_DOMAINS
+            chemical = any(w in (rule.title + " " + rule.instructions).lower() for w in ["bekämpningsmedel", "fungicid", "insekticid", "pesticid", "kemisk"])
+            if chemical and not any(_domain(u) in SWEDISH_AUTHORITY_DOMAINS for u in rule.source_urls):
+                rule.source_validated = False
+            validate_rule(rule)
+            rule.save()
+    except (CareValidationError, ValueError, TypeError) as exc:
+        return JsonResponse({"error": str(exc)}, status=400)
+    return JsonResponse({"ok": True, "rule": _rule_json(rule), "comparison": plan_comparison(rule.plan)})
+
+
+@require_GET
+def api_proposals(request):
+    return JsonResponse({"proposals": [{"item": {"id": p.item_id, "name": p.item.name}, "plan": _plan_json(p.plan)} for p in ResearchProposal.objects.filter(status="pending").select_related("item", "plan")]})
+
+
+@require_GET
+def api_month(request):
+    try:
+        year = int(request.GET.get("year", timezone.localdate().year))
+        month = int(request.GET.get("month", timezone.localdate().month))
+        first, last = date(year, month, 1), month_end(year, month)
+    except (ValueError, TypeError):
+        return JsonResponse({"error": "Välj ett giltigt år och en månad."}, status=400)
+    tasks = TaskOccurrence.objects.filter(item__active=True).select_related("item", "item__area", "rule", "work")
+    return JsonResponse({"year": year, "month": month,
+        "counts": [{"month": m, "open": tasks.filter(status="pending", archive_reason="", work__excluded_at__isnull=True, window_start__lte=month_end(year,m), window_end__gte=date(year,m,1)).count()} for m in range(1,13)],
+        "planned": [_task_json(t) for t in tasks.filter(status="pending", archive_reason="", work__excluded_at__isnull=True, window_start__lte=last, window_end__gte=first)],
+        "history": [_task_json(t) for t in tasks.exclude(status="pending").filter(Q(completed_at__date__range=(first,last)) | Q(skipped_at__date__range=(first,last)) | Q(archived_at__date__range=(first,last)))]})
+
+
+@require_POST
+def api_need(request, work_id):
+    get_object_or_404(WorkIdentity, pk=work_id, merged_into=None)
+    try:
+        task, created = needs_now(work_id)
+    except CareValidationError as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
+    return JsonResponse({"task": _task_json(task), "created": created}, status=201 if created else 200)
+
+
+@require_http_methods(["PATCH"])
+def api_work(request, work_id):
+    get_object_or_404(WorkIdentity, pk=work_id, merged_into=None)
+    data = _json_body(request) or {}
+    if type(data.get("excluded")) is not bool:
+        return JsonResponse({"error": "Ange om arbetet ska vara bortvalt."}, status=400)
+    work = set_excluded(work_id, data["excluded"])
+    return JsonResponse({"ok": True, "excluded": bool(work.excluded_at)})
 
 
 @require_http_methods(["GET", "POST"])

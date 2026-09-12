@@ -20,12 +20,12 @@ def suggested_work_category(title):
         return "Kontrollera"
     if text.startswith("bedöm"):
         return "Gödsla" if any(word in text for word in ("göd", "näring")) else "Kontrollera"
+    if text.startswith(("vattna", "bevattna")) or " ge vatten" in f" {text}":
+        return "Vattna"
     if any(word in text for word in ("göd", "näring")):
         return "Gödsla"
     if any(word in text for word in ("jord", "ogräs", "marktäck", "luckra")):
         return "Jord och ogräs"
-    if text.startswith(("vattna", "bevattna")) or " ge vatten" in f" {text}":
-        return "Vattna"
     if any(word in text for word in ("beskär", "gallra", "bind upp", "klipp")):
         return "Beskära och binda upp"
     if any(word in text for word in ("skörda", "plocka")):

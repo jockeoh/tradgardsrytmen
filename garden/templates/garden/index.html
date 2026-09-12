@@ -14,22 +14,23 @@
   <link rel="stylesheet" href="{% static 'garden/app.css' %}">
   <link rel="stylesheet" href="{% static 'garden/task-detail.css' %}">
   <link rel="stylesheet" href="{% static 'garden/work-rounds.css' %}">
+  <link rel="stylesheet" href="{% static 'garden/relevant-care.css' %}">
   <title>Trädgårdsrytmen</title>
 </head>
 <body>
   <a class="skip-link" href="#main">Hoppa till innehållet</a>
   <aside class="side-nav" aria-label="Huvudnavigation">
     <div class="brand"><span class="brand-mark">T</span><span>Trädgårdsrytmen</span></div>
-    <button class="nav-link active" data-view="month"><span>◷</span> Den här månaden</button>
+    <button class="nav-link active" data-view="month"><span>◷</span> Nu</button>
     <button class="nav-link" data-view="year"><span>○</span> Året</button>
-    <button class="nav-link" data-view="plants"><span>♧</span> Växter</button>
+    <button class="nav-link" data-view="plants"><span>♧</span> Trädgården</button>
     <button class="nav-link" data-view="settings"><span>⌁</span> Inställningar</button>
     <div class="garden-place"><strong id="garden-city"></strong><span id="garden-exposure"></span></div>
   </aside>
 
   <main id="main">
     <header class="topbar">
-      <div><p class="eyebrow" id="garden-name">Trädgården</p><h1 id="view-title">Den här månaden</h1></div>
+      <div><p class="eyebrow" id="garden-name">Trädgården</p><h1 id="view-title">Nu</h1></div>
       <button class="search-trigger" id="search-trigger" aria-label="Sök i trädgården"><span>⌕</span><span class="search-label">Sök växt eller råd</span><kbd>⌘ K</kbd></button>
     </header>
 
@@ -39,23 +40,34 @@
     <section class="view hidden" id="view-month" aria-labelledby="view-title">
       <div class="month-hero">
         <div class="hero-copy"><p class="hero-kicker" id="hero-date"></p><h2 id="hero-month">{{ month_name|capfirst }}</h2><p id="hero-next">Vi räknar ut nästa steg …</p></div>
-        <div class="progress-orbit" role="img" aria-label="Månadens genomförande"><strong id="progress-value">0%</strong><span>klart</span></div>
+        <p id="progress-value" class="care-count" aria-live="polite"></p>
       </div>
-      <div class="section-heading"><div><p class="eyebrow">Din rytm</p><h2>Att göra</h2></div><button class="text-button" id="new-task">+ Egen uppgift</button></div>
+      <div class="section-heading"><div><p class="eyebrow">Din rytm</p><h2>Viktig skötsel</h2></div><button class="text-button" id="new-task">+ Egen uppgift</button></div>
       <div class="task-view-switch" role="group" aria-label="Gruppera uppgifter"><button type="button" data-task-view="work">Efter jobb</button><button type="button" data-task-view="area">Efter plats</button></div>
+      <button class="review-link button secondary" data-review>Granska förslag <span id="review-count"></span></button>
       <div id="task-groups"></div>
+      <details id="on-demand"><summary>Vid behov</summary><div id="need-list"></div></details>
     </section>
 
     <section class="view hidden" id="view-year">
       <div class="section-heading"><div><p class="eyebrow">Årshjul</p><h2>Hela trädgårdsåret</h2></div></div>
-      <p class="lead">Se var arbetstopparna ligger. Tryck på en månad för att komma tillbaka till månadsvyn.</p>
+      <p class="lead">Välj en månad för att se planerade arbeten och utförd historik.</p>
+      <label class="year-selector">År<input id="selected-year" type="number" min="1900" max="9999"></label>
       <div class="year-grid" id="year-grid"></div>
+      <div id="month-detail" aria-live="polite"></div>
     </section>
 
     <section class="view hidden" id="view-plants">
       <div class="section-heading"><div><p class="eyebrow">Det som växer</p><h2>Växter och odlingar</h2></div><button class="button" id="new-item">+ Lägg till</button></div>
       <div class="quick-add"><span>Snabba tillägg</span><div id="quick-adds"></div></div>
       <div class="plant-list" id="plant-list"></div>
+      <section class="settings-form area-settings" aria-labelledby="areas-heading">
+        <fieldset><legend id="areas-heading">Trädgårdsområden</legend><p class="muted">Du bestämmer områdena. Den fria platsdetaljen behålls och appen gissar aldrig var en växt står.</p>
+          <form id="new-area-form" class="new-area-form"><label>Nytt område<input name="name" maxlength="80" placeholder="Till exempel Framsidan" required></label><button class="button secondary" type="submit">Skapa område</button></form>
+          <div id="area-list" class="area-list"></div>
+        </fieldset>
+        <fieldset><legend>Placera växter</legend><p class="muted">Den befintliga platsdetaljen visas bredvid varje växt så att du kan välja område utan automatisk gissning.</p><div id="placement-review"></div></fieldset>
+      </section>
     </section>
 
     <section class="view hidden" id="view-settings">
@@ -74,26 +86,20 @@
         </fieldset>
         <fieldset><legend>AI-förslag</legend><p>AI lägger aldrig till uppgifter själv. Alla råd hamnar först i din granskningskö.</p><p><strong id="proposal-count">0</strong> förslag väntar på granskning.</p></fieldset>
       </form>
-      <section class="settings-form area-settings" aria-labelledby="areas-heading">
-        <fieldset><legend id="areas-heading">Trädgårdsområden</legend><p class="muted">Du bestämmer områdena. Den fria platsdetaljen behålls och appen gissar aldrig var en växt står.</p>
-          <form id="new-area-form" class="new-area-form"><label>Nytt område<input name="name" maxlength="80" placeholder="Till exempel Framsidan" required></label><button class="button secondary" type="submit">Skapa område</button></form>
-          <div id="area-list" class="area-list"></div>
-        </fieldset>
-        <fieldset><legend>Placera växter</legend><p class="muted">Den befintliga platsdetaljen visas bredvid varje växt så att du kan välja område utan automatisk gissning.</p><div id="placement-review"></div></fieldset>
-      </section>
+
     </section>
   </main>
 
   <nav class="bottom-nav" aria-label="Huvudnavigation">
-    <button class="nav-link active" data-view="month"><span>◷</span><small>Månaden</small></button>
+    <button class="nav-link active" data-view="month"><span>◷</span><small>Nu</small></button>
     <button class="nav-link" data-view="year"><span>○</span><small>Året</small></button>
-    <button class="nav-link" data-view="plants"><span>♧</span><small>Växter</small></button>
+    <button class="nav-link" data-view="plants"><span>♧</span><small>Trädgården</small></button>
     <button class="nav-link" data-view="settings"><span>⌁</span><small>Inställningar</small></button>
   </nav>
 
   <dialog id="search-dialog" class="search-dialog"><form method="dialog"><button class="dialog-close" aria-label="Stäng">×</button></form><label for="global-search">Sök i trädgården</label><input id="global-search" type="search" placeholder="Prova Flammantz, beskärning …" autocomplete="off"><div id="search-results" class="search-results"><p class="muted">Sök bland växter, sorter, alias, råd och uppgifter.</p></div></dialog>
-  <dialog id="form-dialog" class="sheet-dialog"><form id="dynamic-form"><button class="dialog-close" type="button" data-close>×</button><div id="form-content"></div></form></dialog>
-  <dialog id="detail-dialog" class="detail-dialog"><button class="dialog-close" type="button" data-close-detail>×</button><div id="detail-content"></div></dialog>
+  <dialog id="form-dialog" class="sheet-dialog"><form id="dynamic-form"><button class="dialog-close" type="button" data-close aria-label="Stäng formulär">×</button><div id="form-content"></div></form></dialog>
+  <dialog id="detail-dialog" class="detail-dialog"><button class="dialog-close" type="button" data-close-detail aria-label="Stäng detaljer">×</button><div id="detail-content"></div></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
   <script src="{% static 'garden/app.js' %}" defer></script>
 </body>

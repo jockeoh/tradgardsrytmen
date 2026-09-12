@@ -49,6 +49,11 @@ source "$ENV_FILE"
 set +a
 runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" migrate --noinput
 runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" seed_garden
+# This is a deterministic local transition: it queues legacy rules for human
+# review and archives only unambiguous automatic clutter. The command makes its
+# own integrity-checked database backup and never invokes research or a model.
+CARE_REPORT="$STATE_DIR/care-cleanup-$REMOTE_REV.json"
+runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" clean_care_content --apply --report "$CARE_REPORT"
 "$VENV/bin/python" "$APP/manage.py" collectstatic --noinput
 chmod -R a+rX "$APP/staticfiles"
 runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" check --deploy
@@ -61,7 +66,6 @@ systemctl restart tradgardsrytmen.service
 
 for _ in {1..20}; do
   if curl --fail --silent --show-error http://127.0.0.1:10443/health/ >/dev/null; then
-    runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" replace_pending_research
     git_as_clawd rev-parse HEAD > "$STATE_DIR/deployed_commit"
     chown tradgardsrytmen:tradgardsrytmen "$STATE_DIR/deployed_commit"
     exit 0

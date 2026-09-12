@@ -3,6 +3,10 @@ from . import views
 
 urlpatterns = [
     path("bootstrap/", views.api_bootstrap),
+    path("month/", views.api_month),
+    path("proposals/", views.api_proposals),
+    path("works/<int:work_id>/need/", views.api_need),
+    path("works/<int:work_id>/", views.api_work),
     path("search/", views.api_search),
     path("items/", views.api_items),
     path("items/<int:item_id>/", views.api_item),

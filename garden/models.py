@@ -16,8 +16,7 @@ class GardenSettings(models.Model):
 
     @classmethod
     def load(cls):
-        obj, _ = cls.objects.get_or_create(pk=1)
-        return obj
+        return cls.objects.filter(pk=1).first() or cls(pk=1)
 
 
 class GardenArea(models.Model):
@@ -67,6 +66,8 @@ class CarePlanVersion(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     created_at = models.DateTimeField(auto_now_add=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
+    effective_from = models.DateField(null=True, blank=True)
+    research_context = models.JSONField(default=dict, blank=True)
 
     class Meta:
         ordering = ["-version"]
@@ -86,7 +87,29 @@ class SourceReference(models.Model):
         constraints = [models.UniqueConstraint(fields=["plan", "url"], name="unique_plan_source")]
 
 
+class WorkIdentity(models.Model):
+    """Stable identity, shared by rule versions and all their occurrences."""
+    item = models.ForeignKey(GardenItem, on_delete=models.CASCADE, related_name="works")
+    action_key = models.CharField(max_length=100)
+    scope = models.CharField(max_length=160, default="hela-växten")
+    excluded_at = models.DateTimeField(null=True, blank=True)
+    merged_into = models.ForeignKey("self", on_delete=models.PROTECT, null=True, blank=True, related_name="merged_identities")
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["item", "action_key", "scope"], name="unique_item_work_scope")]
+
+
 class CareRule(models.Model):
+    ADVICE_CHOICES = [("planned", "Planerat arbete"), ("on_demand", "Vid behov"), ("general", "Allmänt råd"), ("review", "Kräver granskning")]
+    work = models.ForeignKey(WorkIdentity, on_delete=models.PROTECT, null=True, blank=True, related_name="rules")
+    identity_source = models.ForeignKey(WorkIdentity, on_delete=models.PROTECT, null=True, blank=True, related_name="refinement_rules")
+    identity_change_kind = models.CharField(max_length=12, blank=True)
+    advice_kind = models.CharField(max_length=20, choices=ADVICE_CHOICES, default="planned")
+    relevance_reason = models.TextField(blank=True)
+    need_condition = models.TextField(blank=True)
+    evidence_conflict = models.BooleanField(default=False)
+    one_off_end = models.DateField(null=True, blank=True)
     CADENCE_CHOICES = [("one_off", "Engångsuppgift"), ("seasonal", "En gång per säsong"), ("monthly", "Varje månad i fönstret")]
     CONFIDENCE_CHOICES = [("high", "Hög"), ("medium", "Medel"), ("low", "Låg")]
     item = models.ForeignKey(GardenItem, on_delete=models.CASCADE, related_name="care_rules")
@@ -114,12 +137,17 @@ class ResearchProposal(models.Model):
     status = models.CharField(max_length=20, choices=STATUS_CHOICES, default="pending")
     response_id = models.CharField(max_length=120, blank=True)
     error = models.TextField(blank=True)
+    review_receipt = models.JSONField(default=dict, blank=True)
     created_at = models.DateTimeField(auto_now_add=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
 
 
 class TaskOccurrence(models.Model):
-    STATUS_CHOICES = [("pending", "Öppen"), ("completed", "Klar"), ("skipped", "Hoppad över")]
+    work = models.ForeignKey(WorkIdentity, on_delete=models.PROTECT, null=True, blank=True, related_name="occurrences")
+    identity_slot = models.CharField(max_length=240, unique=True, null=True, blank=True)
+    archive_reason = models.CharField(max_length=240, blank=True)
+    archived_at = models.DateTimeField(null=True, blank=True)
+    STATUS_CHOICES = [("pending", "Öppen"), ("completed", "Klar"), ("skipped", "Hoppad över"), ("archived", "Arkiverad")]
     rule = models.ForeignKey(CareRule, on_delete=models.CASCADE, null=True, blank=True, related_name="occurrences")
     item = models.ForeignKey(GardenItem, on_delete=models.CASCADE, related_name="tasks")
     title = models.CharField(max_length=180)

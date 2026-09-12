@@ -8,6 +8,7 @@ from django.utils import timezone
 from .models import CarePlanVersion, CareRule, GardenArea, GardenItem, GardenSettings, PushSubscription, ReminderDelivery, ResearchProposal, TaskOccurrence
 from .push import send_due_reminders
 from .research import ResearchError, approve_proposal, create_research_proposal
+from .care_contract import plan_comparison
 from .tasks import archive_pre_activation_backlog, dashboard_for, materialize_rule, months_for_season
 from .work_categories import WORK_CATEGORIES, normalize_work_category, suggested_work_category
 
@@ -63,7 +64,8 @@ class TaskMaterializationTests(TestCase):
 
     def test_one_off_rule_is_created_only_once(self):
         upcoming = (timezone.localdate().month % 12) + 1
-        rule = self.rule(cadence="one_off", start_month=upcoming, end_month=upcoming)
+        when = date(timezone.localdate().year + 1, upcoming, 8)
+        rule = self.rule(cadence="one_off", start_month=upcoming, end_month=upcoming, one_off_date=when, one_off_end=when)
         materialize_rule(rule, through_year=timezone.localdate().year + 2)
         self.assertEqual(rule.occurrences.count(), 1)
 
@@ -93,6 +95,7 @@ class ProposalTests(TestCase):
     def response(self, source_urls=None):
         source_urls = source_urls if source_urls is not None else ["https://www.slu.se/rad/hallon"]
         result = {"summary":"Kort råd.","warnings":[],"uncertainties":[],"tasks":[{"title":"Gallra skott","category":"Beskära och binda upp","instructions":"Ta bort gamla skott och lämna årets friska skott kvar.","cadence":"seasonal","start_month":8,"end_month":9,"conditional":False,"evidence_conflict":False,"source_urls":source_urls}]}
+        result["tasks"][0].update(action_key="gallra-fruktade-skott", scope="sommarhallon", advice_kind="planned", relevance_reason="Hallonets fruktade skott ersätts av årets nya skott.", need_condition="", one_off_date="", one_off_end="")
         return {"id":"resp_test","output":[{"type":"web_search_call","action":{"sources":[{"title":"SLU råd","url":"https://www.slu.se/rad/hallon"}]}},{"type":"message","content":[{"type":"output_text","text":json.dumps(result)}]}]}
 
     def test_no_tasks_before_review_and_source_is_validated(self):
@@ -106,8 +109,8 @@ class ProposalTests(TestCase):
         proposal = create_research_proposal(self.item, self.garden, self.response(["https://example.com/fake"]))
         rule = proposal.plan.rules.get()
         self.assertFalse(rule.source_validated)
-        selected = approve_proposal(proposal, [rule.pk])
-        self.assertEqual(selected, [])
+        with self.assertRaisesRegex(ResearchError, "källstöd"):
+            approve_proposal(proposal, [rule.pk], plan_comparison(proposal.plan)["token"])
         self.assertEqual(TaskOccurrence.objects.count(), 0)
 
     def test_pending_rule_can_be_edited(self):
@@ -125,9 +128,9 @@ class ProposalTests(TestCase):
         current = TaskOccurrence.objects.create(item=self.item, rule=old_rule, title="Nu", occurrence_key="old:now", season_year=today.year, occurrence_month=today.month, window_start=today.replace(day=1), window_end=today, status="completed")
         future = TaskOccurrence.objects.create(item=self.item, rule=old_rule, title="Framtid", occurrence_key="old:future", season_year=today.year+1, occurrence_month=1, window_start=date(today.year+1,1,1), window_end=date(today.year+1,1,31))
         proposal = create_research_proposal(self.item, self.garden, self.response())
-        approve_proposal(proposal, [proposal.plan.rules.get().pk])
+        approve_proposal(proposal, [proposal.plan.rules.get().pk], plan_comparison(proposal.plan)["token"], {str(proposal.plan.rules.get().pk): "Det gamla rådet saknar motsvarande arbetsmoment."})
         self.assertTrue(TaskOccurrence.objects.filter(pk=current.pk, status="completed").exists())
-        self.assertFalse(TaskOccurrence.objects.filter(pk=future.pk).exists())
+        self.assertTrue(TaskOccurrence.objects.filter(pk=future.pk, status="archived").exists())
 
     @override_settings(OPENAI_API_KEY="")
     def test_missing_key_has_clear_error(self):
@@ -203,7 +206,7 @@ class ProposalTests(TestCase):
         body = json.loads(negative["output"][1]["content"][0]["text"])
         body["tasks"][0].update({"title":"Undvik beskärning", "instructions":"Beskär inte växten under den här perioden eftersom den kan ta skada."})
         negative["output"][1]["content"][0]["text"] = json.dumps(body)
-        with self.assertRaisesRegex(ResearchError, "varning som egen uppgift"):
+        with self.assertRaisesRegex(ResearchError, "varning hör till allmänna råd"):
             create_research_proposal(self.item, self.garden, negative)
         instruction_only = self.response()
         body = json.loads(instruction_only["output"][1]["content"][0]["text"])

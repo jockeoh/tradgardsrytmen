@@ -4,6 +4,8 @@ from django.utils import timezone
 from pywebpush import WebPushException, webpush
 from .models import GardenSettings, PushSubscription, ReminderDelivery, TaskOccurrence
 from .vapid import get_vapid_keys
+from .tasks import dashboard_for
+from itertools import chain
 
 
 def _send(subscription, payload):
@@ -42,13 +44,14 @@ def send_due_reminders(now=None):
             key = f"monthly:{sub.pk}:{now:%Y-%m}"
             delivery, created = ReminderDelivery.objects.get_or_create(delivery_key=key, defaults={"subscription": sub, "kind": "monthly", "scheduled_for": now})
             if created:
-                count = TaskOccurrence.objects.filter(status="pending", window_start__lte=now.date().replace(day=28)).count()
+                board = dashboard_for(now.date())
+                count = sum(board[k].count() for k in ["overdue", "due", "later"])
                 ok, error = _send(sub, {"title": f"{now.strftime('%B').capitalize()} i trädgården", "body": f"Du har {count} öppna trädgårdsuppgifter.", "url": "/"})
                 delivery.status, delivery.error, delivery.sent_at = ("sent" if ok else "failed"), error, (now if ok else None)
                 delivery.save()
                 sent += int(ok)
         if sub.task_reminders and now.weekday() == garden.reminder_weekday:
-            for task in TaskOccurrence.objects.filter(status="pending", window_start__lte=now.date(), window_end__gte=now.date()).select_related("item"):
+            for task in chain(dashboard_for(now.date())["overdue"], dashboard_for(now.date())["due"]):
                 key = f"task:{sub.pk}:{task.pk}:{now:%G-%V}"
                 delivery, created = ReminderDelivery.objects.get_or_create(delivery_key=key, defaults={"subscription": sub, "occurrence": task, "kind": "task", "scheduled_for": now})
                 if created:

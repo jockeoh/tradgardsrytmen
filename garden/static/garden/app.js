@@ -1,5 +1,5 @@
 const savedTaskView = window.localStorage.getItem("garden-task-view");
-const state = { data: null, view: "month", taskView: ["work", "area"].includes(savedTaskView) ? savedTaskView : "work", searchTimer: null, openItem: null };
+const state = { data: null, view: "month", taskView: ["work", "area"].includes(savedTaskView) ? savedTaskView : "work", searchTimer: null, toastTimer: null, openItem: null, selectedMonth: new Date().getMonth()+1, selectedYear: new Date().getFullYear(), rules: new Map(), settingsDirty: false, reviewDrafts: new Map(), loaded: false, scroll: {} };
 const $ = selector => document.querySelector(selector);
 const $$ = selector => [...document.querySelectorAll(selector)];
 
@@ -26,16 +26,18 @@ function escapeHtml(value) {
 }
 
 function setView(view) {
+  state.scroll[state.view] = window.scrollY;
   state.view = view;
-  const titles = {month:"Den här månaden", year:"Året", plants:"Växter", settings:"Inställningar"};
+  const titles = {month:"Nu", year:"Året", plants:"Trädgården", settings:"Inställningar"};
   $$(".view").forEach(el => el.classList.toggle("hidden", el.id !== `view-${view}`));
   $$(".nav-link").forEach(el => el.classList.toggle("active", el.dataset.view === view));
   $("#view-title").textContent = titles[view];
-  window.scrollTo({top:0, behavior:"smooth"});
+  window.scrollTo({top:state.scroll[view] || 0});
+  if (view === "year") loadMonth().catch(e=>toast(e.message));
 }
 
 function formatShortDate(value) {
-  return new Date(`${value}T12:00:00`).toLocaleDateString("sv-SE", {day:"numeric", month:"short"});
+  return new Date(`${value}T12:00:00`).toLocaleDateString("sv-SE", {day:"numeric", month:"short", ...(value.slice(0,4) !== state.data?.today.slice(0,4) ? {year:"numeric"} : {})});
 }
 
 function taskWindow(task) {
@@ -45,40 +47,44 @@ function taskWindow(task) {
 function taskRow(task) {
   const place = [task.area?.name || "Inte placerat", task.location_detail].filter(Boolean).join(" · ");
   return `<div class="task-row" data-task="${task.id}">
-    <button class="task-check" data-status="completed" aria-label="Markera ${escapeHtml(task.title)} som klar">✓</button>
-    <button class="task-copy task-open" data-open-task="${task.id}" aria-label="Visa detaljer för ${escapeHtml(task.title)}"><span class="task-row-top"><strong>${escapeHtml(task.item.name)}</strong><span>${escapeHtml(taskWindow(task))}</span></span><span class="task-title">${escapeHtml(task.title)}</span><span class="task-instruction">${escapeHtml(task.instructions || "Öppna för fullständigt råd.")}</span><span class="task-place">${escapeHtml(place)}</span></button>
+    ${task.status === "pending" ? `<button class="task-check" data-status="completed" aria-label="Markera ${escapeHtml(task.title)} som klar">✓</button>` : `<span class="task-state">${escapeHtml(statusName(task.status))}</span>`}
+    <button class="task-copy task-open" data-open-task="${task.id}" aria-label="Visa detaljer för ${escapeHtml(task.title)}"><span class="task-row-top"><strong>${escapeHtml(task.item.name)}</strong><span>${escapeHtml(taskWindow(task))}</span></span><span class="task-title">${escapeHtml(task.title)}</span><span class="task-instruction">${escapeHtml(task.relevance_reason || "Öppna för instruktioner.")}</span><span class="task-place">${escapeHtml(place)}</span></button>
     <button class="task-plant-link" data-open-item="${task.item.id}" aria-label="Visa växten ${escapeHtml(task.item.name)}">Växt</button>
   </div>`;
 }
 
 function renderTasks(groups) {
-  const tasks = [...groups.overdue, ...groups.due, ...groups.later].filter((task, index, all) => all.findIndex(other => other.id === task.id) === index);
-  $$("[data-task-view]").forEach(button => button.classList.toggle("active", button.dataset.taskView === state.taskView));
-  const container = $("#task-groups");
-  if (!tasks.length) {
-    container.innerHTML = '<div class="empty-inline">Inga öppna uppgifter den här månaden.</div>';
-    return;
-  }
-  const categories = state.data.work_categories;
-  if (state.taskView === "work") {
-    container.innerHTML = categories.map(category => {
-      const rows = tasks.filter(task => task.category === category).sort((a,b) => `${a.area?.name || "ZZZ"}|${a.item.name}|${a.end}`.localeCompare(`${b.area?.name || "ZZZ"}|${b.item.name}|${b.end}`, "sv"));
-      if (!rows.length) return "";
-      const plants = new Set(rows.map(task => task.item.id)).size;
-      return `<section class="work-group"><div class="round-heading"><h3>${escapeHtml(category)}</h3><span>${plants} ${plants === 1 ? "växt" : "växter"} · ${rows.length} ${rows.length === 1 ? "uppgift" : "uppgifter"}</span></div>${rows.map(taskRow).join("")}</section>`;
-    }).join("");
-    return;
-  }
-  const areaNames = [...new Set(tasks.map(task => task.area?.name || "Inte placerat"))].sort((a,b) => a === "Inte placerat" ? 1 : b === "Inte placerat" ? -1 : a.localeCompare(b, "sv"));
-  container.innerHTML = areaNames.map(areaName => {
-    const areaTasks = tasks.filter(task => (task.area?.name || "Inte placerat") === areaName);
-    const plants = new Set(areaTasks.map(task => task.item.id)).size;
-    const nested = categories.map(category => {
-      const rows = areaTasks.filter(task => task.category === category).sort((a,b) => `${a.item.name}|${a.end}`.localeCompare(`${b.item.name}|${b.end}`, "sv"));
-      return rows.length ? `<div class="area-category"><h4>${escapeHtml(category)}</h4>${rows.map(taskRow).join("")}</div>` : "";
-    }).join("");
-    return `<section class="work-group area-group"><div class="round-heading"><h3>${escapeHtml(areaName)}</h3><span>${plants} ${plants === 1 ? "växt" : "växter"} · ${areaTasks.length} ${areaTasks.length === 1 ? "uppgift" : "uppgifter"}</span></div>${nested}</section>`;
-  }).join("");
+  $$("[data-task-view]").forEach(button => {button.classList.toggle("active", button.dataset.taskView === state.taskView);button.setAttribute("aria-pressed", String(button.dataset.taskView === state.taskView));});
+  const sections = [["Aktuellt", [...groups.overdue, ...groups.due]], ["Kommande", groups.later]];
+  $("#task-groups").innerHTML = sections.map(([label, tasks]) => {
+    if (!tasks.length) return label === "Aktuellt" ? '<p class="empty-inline">Inga aktuella arbeten. Nästa säsongsarbete visas under Kommande.</p>' : '';
+    const key = t => state.taskView === "work" ? t.category : t.area?.name || "Inte placerat";
+    const sorted = [...tasks].sort((a,b)=>a.end.localeCompare(b.end) || a.title.localeCompare(b.title,"sv"));
+    const keys = [...new Set(sorted.map(key))];
+    return `<section><h3 class="period-heading">${label}</h3>${keys.map(k=>`<section class="work-group"><div class="round-heading"><h4>${escapeHtml(k)}</h4></div>${sorted.filter(t=>key(t)===k).map(taskRow).join('')}</section>`).join('')}</section>`;
+  }).join('');
+}
+
+function statusName(status) {return {pending:"Planerat", completed:"Utfört", skipped:"Överhoppat", archived:"Arkiverat"}[status] || status;}
+function adviceMarkup(r) {
+  return `<article class="advice-row"><strong>${escapeHtml(r.title)}</strong><p>${escapeHtml(r.item.name)} · ${escapeHtml(r.scope)}</p><p>${escapeHtml(r.need_condition || r.relevance_reason)}</p><details><summary>Instruktion och källor</summary><p>${escapeHtml(r.instructions)}</p>${r.source_urls.map(u=>`<a class="source-link" href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`).join('')}</details><div class="form-actions">${r.advice_kind === 'on_demand' ? `<button class="button secondary" data-need="${r.work_id}">Behövs nu</button>` : ''}<button class="text-button" data-exclude="${r.work_id}">Inte relevant här</button></div></article>`;
+}
+
+async function loadMonth() {
+  const year = state.selectedYear, month = state.selectedMonth;
+  const data = await api(`/api/month/?year=${year}&month=${month}`);
+  if (year !== state.selectedYear || month !== state.selectedMonth) return;
+  $$("[data-month]").forEach(b=>b.setAttribute('aria-pressed',String(Number(b.dataset.month)===month)));
+  data.counts.forEach(row=>{const button=$(`[data-month="${row.month}"]`);if(button)button.querySelector("span").textContent=row.open ? `${row.open} ${row.open === 1 ? "planerat arbete" : "planerade arbeten"}` : "Inga planerade arbeten";});
+  $("#month-detail").innerHTML = `<h3>${monthName(month)} ${year}</h3><h4>Planerade arbeten</h4>${data.planned.length ? data.planned.map(taskRow).join('') : '<p class="muted">Inga planerade arbeten.</p>'}<h4>Historik</h4>${data.history.length ? data.history.map(taskRow).join('') : '<p class="muted">Ingen registrerad historik under månaden.</p>'}`;
+}
+
+async function openReview() {
+  const dialog = $("#detail-dialog");
+  $("#detail-content").innerHTML = '<p>Hämtar granskningskön …</p>';
+  dialog.showModal();
+  const {proposals} = await api('/api/proposals/');
+  $("#detail-content").innerHTML = `<h2>Granska skötsel</h2>${proposals.length ? proposals.map(p=>`<h3><button class="text-button" data-open-item="${p.item.id}">${escapeHtml(p.item.name)}</button></h3>${proposalMarkup(p.plan)}`).join('') : '<p>Inga förslag väntar på granskning.</p>'}`;
 }
 
 function plantRow(item) {
@@ -106,24 +112,32 @@ function render(data) {
   $("#garden-exposure").textContent = `Zon ${data.settings.cultivation_zone} · ${data.settings.exposure}`;
   $("#hero-date").textContent = new Date(data.today + "T12:00:00").toLocaleDateString("sv-SE", {weekday:"long", day:"numeric", month:"long"});
   $("#hero-month").textContent = data.month_name[0].toUpperCase() + data.month_name.slice(1);
-  $("#progress-value").textContent = `${data.progress}%`;
+  $("#progress-value").textContent = `${data.tasks.due.length + data.tasks.overdue.length} aktuella · ${data.completed} utförda denna månad`;
+  $("#need-list").innerHTML = data.advice.length ? data.advice.map(adviceMarkup).join("") : '<p class="muted">Inga godkända behovsråd.</p>';
+  $("#review-count").textContent = `(${data.pending_proposals})`;
   const first = data.tasks.overdue[0] || data.tasks.due[0] || data.tasks.later[0];
   $("#hero-next").textContent = first ? `Nästa steg: ${first.title.toLowerCase()} för ${first.item.name.toLowerCase()}.` : "Allt är i fas. Njut av trädgården en stund.";
   renderTasks(data.tasks);
-  $("#year-grid").innerHTML = data.year.map(row => `<button class="year-month ${row.month === new Date(data.today).getMonth()+1 ? "current" : ""}" data-view="month"><strong>${row.name[0].toUpperCase()+row.name.slice(1)}</strong><span>${row.open ? `${row.open} öppna uppgifter` : "Lugn månad"}</span></button>`).join("");
-  $("#plant-list").innerHTML = data.items.map(plantRow).join("");
+  $("#year-grid").innerHTML = data.year.map(row => `<button class="year-month ${row.month === new Date(data.today).getMonth()+1 ? "current" : ""}" data-month="${row.month}" aria-pressed="${row.month === state.selectedMonth}"><strong>${row.name[0].toUpperCase()+row.name.slice(1)}</strong><span>${row.open ? `${row.open} öppna uppgifter` : "Lugn månad"}</span></button>`).join("");
+  const areas = [...new Set(data.items.map(i=>i.area?.name || "Inte placerat"))];
+  $("#plant-list").innerHTML = areas.map(area=>`<section><h3>${escapeHtml(area)}</h3>${data.items.filter(i=>(i.area?.name || "Inte placerat")===area).map(plantRow).join('')}</section>`).join('');
+  $("#selected-year").value = state.selectedYear;
   const suggestions = ["Päron","Vinbär","Björnbär","Krusbär","Valnöt","Kinesisk toon","Grönsaker"];
   $("#quick-adds").innerHTML = suggestions.map(name => `<button class="quick-chip" data-quick-add="${name}">+ ${name}</button>`).join("");
-  for (const field of ["city","cultivation_zone","exposure"]) $("#settings-form").elements[field].value = data.settings[field] || "";
+  if (!state.settingsDirty) for (const field of ["city","cultivation_zone","exposure"]) $("#settings-form").elements[field].value = data.settings[field] || "";
   $("#proposal-count").textContent = data.pending_proposals;
   renderAreas(data);
 }
 
 async function load() {
+  const scroll = window.scrollY;
   try {
     render(await api("/api/bootstrap/"));
     $("#loading").classList.add("hidden");
-    setView(state.view);
+    if (!state.loaded) {setView(state.view); state.loaded = true;}
+    if (state.view === 'year') await loadMonth();
+    $("#error-state").classList.add("hidden");
+    window.scrollTo({top:scroll});
   } catch (error) {
     $("#loading").classList.add("hidden"); $("#error-state").classList.remove("hidden"); $("#error-message").textContent = error.message;
   }
@@ -139,12 +153,12 @@ async function updateTask(id, status) {
   await load();
   if (status !== "pending") {
     const undo = document.createElement("button"); undo.className = "text-button"; undo.textContent = "Ångra";
-    undo.onclick = () => updateTask(id, "pending"); $("#toast").append(" ", undo); $("#toast").classList.add("show");
+    undo.onclick = event => {event.stopPropagation();updateTask(id, "pending").catch(e=>toast(e.message));}; $("#toast").append(" ", undo); $("#toast").classList.add("show");
   }
 }
 
 function formatTaskDate(value) {
-  return new Date(`${value}T12:00:00`).toLocaleDateString("sv-SE", {day:"numeric", month:"long"});
+  return new Date(`${value}T12:00:00`).toLocaleDateString("sv-SE", {day:"numeric", month:"long", ...(value.slice(0,4) !== state.data?.today.slice(0,4) ? {year:"numeric"} : {})});
 }
 
 async function openTask(id) {
@@ -158,10 +172,11 @@ async function openTask(id) {
     const place = [task.area?.name || "Inte placerat", task.location_detail].filter(Boolean).join(" · ");
     content.innerHTML = `<div class="task-detail" data-task="${task.id}"><p class="eyebrow">${escapeHtml(task.category)}</p><h2>${escapeHtml(task.title)}</h2>
       <div class="detail-meta"><span class="pill">${escapeHtml(task.item.name)}</span><span class="pill">${escapeHtml(place)}</span><span class="pill">${timing}</span>${task.manual ? '<span class="pill">Egen uppgift</span>' : ""}${task.conditional ? '<span class="pill">Bedöm efter läget</span>' : ""}</div>
+      <p>${escapeHtml(task.relevance_reason)} ${task.scope ? `Gäller: ${escapeHtml(task.scope)}.` : ""}</p>
       <section class="detail-section"><h3>Så gör du</h3><p>${escapeHtml(task.instructions || "Inga ytterligare instruktioner har lagts till.")}</p></section>
-      <section class="detail-section"><h3>När</h3><p>Gör uppgiften någon gång ${task.start === task.end ? "den" : "mellan"} ${timing}. Den ligger kvar tills du markerar den som klar eller väljer att hoppa över den.</p></section>
-      <div class="task-detail-actions"><button class="button secondary" data-open-item="${task.item.id}">Visa växt</button><button class="button" data-status="completed">Markera som klar</button></div>
-      <button class="skip-task-button" data-skip-task="${task.id}">Hoppa över uppgiften</button>${sources}</div>`;
+      <section class="detail-section"><h3>När</h3><p>Gör uppgiften någon gång ${task.start === task.end ? "den" : "mellan"} ${timing}. ${task.manual ? "Din egen uppgift ligger kvar tills du avslutar den." : "Automatiska tillfällen arkiveras när tidsfönstret passerat."}</p></section>
+      <div class="task-detail-actions"><button class="button secondary" data-open-item="${task.item.id}">Visa växt</button>${task.status === "pending" ? '<button class="button" data-status="completed">Markera som klar</button>' : `<span>${escapeHtml(statusName(task.status))}</span>`}</div>
+      ${task.status === "pending" ? `<button class="skip-task-button" data-skip-task="${task.id}">Hoppa över denna gång</button>` : ""}${task.work_id ? `<button class="text-button" data-exclude="${task.work_id}">Inte relevant här</button>` : ""}${task.note ? `<p>Anteckning: ${escapeHtml(task.note)}</p>` : ""}${task.archive_reason ? `<p>${escapeHtml(task.archive_reason)}</p>` : ""}${sources}</div>`;
   } catch (error) {
     content.innerHTML = `<h2>Kunde inte öppna uppgiften</h2><p>${escapeHtml(error.message)}</p>`;
   }
@@ -198,6 +213,9 @@ async function openItem(id) {
       ${item.notes?`<p>${escapeHtml(item.notes)}</p>`:""}
       <section class="detail-section"><h3>Nästa uppgifter</h3>${item.next_tasks?.length?item.next_tasks.map(taskRow).join(""):'<p class="muted">Inga aktiva uppgifter ännu.</p>'}</section>
       <section class="detail-section"><h3>Skötselråd</h3>${plan?`<p>${escapeHtml(plan.summary)}</p>${plan.warnings?.map(w=>`<p>⚠ ${escapeHtml(w)}</p>`).join("")||""}`:'<p class="muted">Hämta ett källbelagt förslag och granska det innan något läggs i årshjulet.</p>'}<button class="button secondary" data-research="${item.id}">${plan?"Uppdatera skötselråd":"Hämta skötselråd"}</button></section>
+      <section class="detail-section"><h3>Vid behov och allmänna råd</h3>${item.advice?.map(adviceMarkup).join('') || '<p>Inga råd ännu.</p>'}</section>
+      <details class="detail-section"><summary>Historik (${item.history?.length || 0})</summary>${item.history?.map(taskRow).join('') || '<p>Ingen historik ännu.</p>'}</details>
+      <details class="detail-section"><summary>Bortval (${item.excluded?.length || 0})</summary>${item.excluded?.map(w=>`<p>${escapeHtml(w.title)} · ${escapeHtml(w.scope)} <button class="text-button" data-restore="${w.id}">Återställ</button></p>`).join('') || '<p>Inga beständiga bortval.</p>'}</details>
       ${proposal?proposalMarkup(proposal):planSources(plan)}`;
   } catch(e) { content.innerHTML = `<h2>Kunde inte öppna växten</h2><p>${escapeHtml(e.message)}</p>`; }
 }
@@ -236,7 +254,14 @@ function planSources(plan) {
 }
 
 function proposalMarkup(plan) {
-  return `<section class="detail-section proposal" data-proposal="${plan.proposal_id}"><p class="eyebrow">Väntar på din granskning</p><h3>Föreslagna uppgifter</h3>${plan.rules.map(r=>`<div class="rule-choice"><input aria-label="Välj ${escapeHtml(r.title)}" type="checkbox" value="${r.id}" ${r.source_validated?"checked":"disabled"}><span><strong>${escapeHtml(r.title)}</strong><small>${escapeHtml(r.category)} · ${monthName(r.start_month)}–${monthName(r.end_month)} · ${r.confidence === "high"?"hög":r.confidence === "medium"?"medel":"låg"} säkerhet${!r.source_validated?" · saknar verifierad källa":""}</small><small>${escapeHtml(r.instructions)}</small><button class="text-button" data-edit-rule="${r.id}" data-title="${escapeHtml(r.title)}" data-category="${escapeHtml(r.category)}" data-instructions="${escapeHtml(r.instructions)}" data-cadence="${r.cadence}" data-start="${r.start_month}" data-end="${r.end_month}">Redigera</button></span></div>`).join("")}<div class="form-actions"><button class="text-button" data-reject="${plan.proposal_id}">Avvisa</button><button class="button" data-approve="${plan.proposal_id}">Godkänn valda</button></div></section>${planSources(plan)}`;
+  const comparison = plan.comparison;
+  const labels = {new:'Nytt', changed:'Ändrat', unchanged:'Oförändrat', removed:'Tas bort'};
+  plan.rules.forEach(r=>state.rules.set(r.id, r));
+  return `<section class="detail-section proposal" data-proposal="${plan.proposal_id}" data-token="${comparison.token}"><p class="eyebrow">Väntar på din granskning</p><h3>Förändringar i skötseln</h3><p>${escapeHtml(plan.summary)}</p>${comparison.context_changed ? '<p class="review-notice">Växtinformation eller historik har ändrats sedan analysen. Jämförelsen nedan använder dagens uppgifter.</p>' : ''}${plan.rules.map(r=>{
+    const row = comparison.rows.find(x=>x.rule_id===r.id);
+    const draft = state.reviewDrafts.get(r.id);
+    return `<div class="rule-choice"><input aria-label="Välj ${escapeHtml(r.title)}" type="checkbox" value="${r.id}" ${(draft?.checked ?? row.preselected) ? 'checked' : ''} ${row.error ? 'disabled' : ''}><span><strong>${escapeHtml(r.title)}</strong><small>${labels[row.change]} · ${escapeHtml(r.scope)} · ${{planned:'Planerat arbete', on_demand:'Vid behov', general:'Allmänt råd', review:'Kräver klassificering'}[r.advice_kind]}</small><small>${escapeHtml(r.relevance_reason)}</small>${row.history_count ? `<small>${row.history_count} tidigare utförda eller överhoppade tillfällen respekteras.</small>` : ""}<small>${r.cadence === 'one_off' ? `${escapeHtml(r.one_off_date)}–${escapeHtml(r.one_off_end)}` : `${monthName(r.start_month)}–${monthName(r.end_month)}`}</small>${row.error ? `<p class="review-notice">${escapeHtml(row.error)}</p>` : ''}${row.conflicts.length ? `<p class="review-notice">Möjligt överlapp: ${row.conflicts.map(c=>`${escapeHtml(c.title)} (${escapeHtml(c.scope)})`).join(', ')}</p><label>Hur har överlappet lösts?<textarea data-resolution="${r.id}" placeholder="Beskriv skillnaden i moment eller tillfälle, eller välj bort dubbletten.">${escapeHtml(draft?.resolution || "")}</textarea></label>` : ''}<details><summary>Instruktion och källor</summary><p>${escapeHtml(r.instructions)}</p>${r.source_urls.map(u=>`<a class="source-link" href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`).join('')}</details><button class="text-button" data-edit-rule="${r.id}">Redigera</button></span></div>`;
+  }).join('')}${comparison.removed.map(r=>`<p>Tas bort: ${escapeHtml(r.title)} · ${escapeHtml(r.scope)}. Saknas i det nya förslaget; historiken bevaras.</p>`).join('')}<p class="muted">Endast valda råd behålls i den nya planen. Bortvalda gamla tillfällen arkiveras med orsak.</p><div class="form-actions"><button class="text-button" data-reject="${plan.proposal_id}">Avvisa</button><button class="button" data-approve="${plan.proposal_id}">Godkänn valda</button></div></section>${planSources(plan)}`;
 }
 
 function monthName(month){return ["jan","feb","mar","apr","maj","jun","jul","aug","sep","okt","nov","dec"][month-1]}
@@ -249,19 +274,36 @@ async function research(itemId, button) {
 
 async function approve(id) {
   const rules = $$(`.proposal[data-proposal="${id}"] input:checked`).map(el=>Number(el.value));
-  await api(`/api/proposals/${id}/approve/`, {method:"POST", body:JSON.stringify({rule_ids:rules})}); toast(`${rules.length} uppgifter godkända`); $("#detail-dialog").close(); await load();
+  const proposal = $(`.proposal[data-proposal="${id}"]`);
+  const resolutions = Object.fromEntries([...proposal.querySelectorAll('[data-resolution]')].map(e=>[e.dataset.resolution,e.value]));
+  await api(`/api/proposals/${id}/approve/`, {method:"POST", body:JSON.stringify({rule_ids:rules, comparison_token:proposal.dataset.token, resolutions})}); toast(`${rules.length} råd godkända`); $("#detail-dialog").close(); await load();
 }
 
 function editRule(button) {
+  const rule = state.rules.get(Number(button.dataset.editRule));
   $("#detail-dialog").close();
-  const categories = state.data.work_categories.map(category => `<option value="${escapeHtml(category)}">${escapeHtml(category)}</option>`).join("");
-  openForm("Redigera förslag", `<label>Uppgift<input name="title" required value="${escapeHtml(button.dataset.title)}"></label><label>Arbetskategori<select name="category">${categories}</select></label><label>Instruktion<textarea name="instructions">${escapeHtml(button.dataset.instructions)}</textarea></label><label>Återkomst<select name="cadence"><option value="one_off">En gång</option><option value="seasonal">En gång per säsong</option><option value="monthly">Varje månad i fönstret</option></select></label><div class="field-grid"><label>Från månad<input name="start_month" type="number" min="1" max="12" value="${button.dataset.start}"></label><label>Till månad<input name="end_month" type="number" min="1" max="12" value="${button.dataset.end}"></label></div>`, "Spara ändring", async fd => { const data=Object.fromEntries(fd); data.start_month=Number(data.start_month); data.end_month=Number(data.end_month); await api(`/api/rules/${button.dataset.editRule}/`,{method:"PATCH",body:JSON.stringify(data)}); toast("Förslaget är uppdaterat"); $("#detail-dialog").close(); await load(); });
-  $("#dynamic-form").elements.cadence.value=button.dataset.cadence;
-  $("#dynamic-form").elements.category.value=button.dataset.category;
+  const fields = [['title','Rubrik'], ['scope','Berörd del eller undergrupp'], ['relevance_reason','Varför behövs detta på växten?'], ['need_condition','Behovsvillkor (endast Vid behov)']];
+  const identity = `<label>Hur ska arbetet kopplas?<select name="identity_mode"><option value="existing">Återanvänd valt arbete exakt</option><option value="refine">Förtydliga undergruppen för valt arbete</option><option value="merge">Slå ihop förslagets tidigare identitet med valt arbete</option><option value="new">Skapa ett nytt arbetsmoment</option></select></label><label>Arbete<select name="work_id">${rule.works.map(w=>`<option value="${w.id}" data-scope="${escapeHtml(w.scope)}">${escapeHtml(w.title)} · ${escapeHtml(w.scope)}</option>`).join('')}</select></label><p class="muted" data-identity-help></p>`;
+  openForm("Redigera förslag", identity + fields.map(([key,label])=>`<label>${label}<input name="${key}" value="${escapeHtml(rule[key])}"></label>`).join('') + `<label>Rådstyp<select name="advice_kind"><option value="planned">Planerat arbete</option><option value="on_demand">Vid behov</option><option value="general">Allmänt råd</option></select></label><label>Arbetskategori<select name="category">${state.data.work_categories.map(c=>`<option>${escapeHtml(c)}</option>`).join('')}</select></label><label>Instruktion<textarea name="instructions">${escapeHtml(rule.instructions)}</textarea></label><label>Återkomst<select name="cadence"><option value="seasonal">En gång per säsong</option><option value="monthly">Varje månad</option><option value="one_off">En gång på angivna datum</option></select></label><div class="field-grid"><label>Från månad<input name="start_month" type="number" min="1" max="12" value="${rule.start_month}"></label><label>Till månad<input name="end_month" type="number" min="1" max="12" value="${rule.end_month}"></label><label>Engångsarbete från<input name="one_off_date" type="date" value="${rule.one_off_date}"></label><label>Engångsarbete till<input name="one_off_end" type="date" value="${rule.one_off_end}"></label></div>`, "Spara ändring", async fd=>{
+    const data = Object.fromEntries(fd); data.start_month=Number(data.start_month);data.end_month=Number(data.end_month);data.conditional=data.advice_kind==='on_demand';
+    await api(`/api/rules/${rule.id}/`,{method:'PATCH',body:JSON.stringify(data)});
+    toast('Förslaget är uppdaterat'); await openReview();
+  });
+  const form = $('#dynamic-form');
+  form.elements.work_id.value=String(rule.identity_change_kind==='refine' ? rule.identity_source_id : rule.work_id);
+  form.elements.identity_mode.value=rule.identity_change_kind || 'existing';
+  const syncIdentity = () => {
+    const mode=form.elements.identity_mode.value, option=form.elements.work_id.selectedOptions[0], scope=form.elements.scope;
+    scope.readOnly=mode==='existing' || mode==='merge';
+    if ((mode==='existing' || mode==='merge') && option) scope.value=option.dataset.scope;
+    form.querySelector('[data-identity-help]').textContent={existing:'Historik och bortval för valt arbete används. Undergruppen följer identiteten.',refine:'Ange en tydligare undergrupp. Kopplingen aktiveras först när förslaget godkänns.',merge:'Använd endast när detta uttryckligen är samma tidigare arbete.',new:'Detta skapar ett fristående arbetsmoment utan tidigare historik.'}[mode];
+  };
+  form.elements.identity_mode.addEventListener('change',syncIdentity);form.elements.work_id.addEventListener('change',syncIdentity);syncIdentity();
+  for (const key of ['category','cadence','advice_kind']) form.elements[key].value = rule[key] === 'review' ? 'planned' : rule[key];
 }
 
 async function saveSettings(event) {
-  event.preventDefault(); const data=Object.fromEntries(new FormData(event.target)); await api("/api/settings/",{method:"PATCH",body:JSON.stringify(data)}); toast("Trädgårdsprofilen är sparad"); await load();
+  event.preventDefault(); const data=Object.fromEntries(new FormData(event.target)); await api("/api/settings/",{method:"PATCH",body:JSON.stringify(data)}); toast("Trädgårdsprofilen är sparad"); state.settingsDirty=false; await load();
 }
 
 function urlBase64ToUint8Array(base64String) { const padding="=".repeat((4-base64String.length%4)%4), base64=(base64String+padding).replace(/-/g,"+").replace(/_/g,"/"), raw=atob(base64); return Uint8Array.from([...raw].map(c=>c.charCodeAt(0))); }
@@ -279,6 +321,12 @@ async function runSearch(value) {
 }
 
 document.addEventListener("click", async event => {
+  try {
+  const month=event.target.closest('[data-month]'); if(month){state.selectedMonth=Number(month.dataset.month);await loadMonth();return;}
+  if(event.target.closest('[data-review]')) {await openReview();return;}
+  const need=event.target.closest('[data-need]'); if(need){need.disabled=true;try{const result=await api(`/api/works/${need.dataset.need}/need/`,{method:'POST',body:'{}'});toast(result.created?'Arbetet är tillagt':'Arbetet är redan öppet');await load();}finally{need.disabled=false;}return;}
+  const exclusion=event.target.closest('[data-exclude], [data-restore]'); if(exclusion){const id=exclusion.dataset.exclude || exclusion.dataset.restore; await api(`/api/works/${id}/`,{method:'PATCH',body:JSON.stringify({excluded:!!exclusion.dataset.exclude})});$('#detail-dialog').close();await load();toast(exclusion.dataset.exclude?'Arbetet är bortvalt tills du återställer det under växten.':'Bortvalet är återställt');return;}
+
   const taskView=event.target.closest("[data-task-view]"); if(taskView){state.taskView=taskView.dataset.taskView;window.localStorage.setItem("garden-task-view",state.taskView);renderTasks(state.data.tasks);return;}
   const nav=event.target.closest("[data-view]"); if(nav){setView(nav.dataset.view);return;}
   const status=event.target.closest("[data-status]"); if(status){const taskRow=status.closest("[data-task]"); await updateTask(Number(taskRow.dataset.task),status.dataset.status); if(taskRow.classList.contains("task-detail")) $("#detail-dialog").close(); return;}
@@ -295,6 +343,7 @@ document.addEventListener("click", async event => {
   const deleteArea=event.target.closest("[data-delete-area]"); if(deleteArea){if(window.confirm(`Ta bort området ${deleteArea.dataset.areaName}? Växterna blir inte placerade men deras platsdetaljer sparas.`)){await api(`/api/areas/${deleteArea.dataset.deleteArea}/`,{method:"DELETE"});toast("Området togs bort");await load();}return;}
   if(event.target.closest("[data-close]")) $("#form-dialog").close();
   if(event.target.closest("[data-close-detail]")) $("#detail-dialog").close();
+  } catch(error) {toast(error.message);}
 });
 
 document.addEventListener("change", async event => {
@@ -310,6 +359,12 @@ document.addEventListener("change", async event => {
   }
 });
 
+document.addEventListener('input', event=>{
+  const proposal=event.target.closest('.proposal'); if(!proposal)return;
+  proposal.querySelectorAll('.rule-choice').forEach(row=>{const box=row.querySelector('input[type=checkbox]');state.reviewDrafts.set(Number(box.value),{checked:box.checked,resolution:row.querySelector('textarea')?.value || ''});});
+});
+$("#settings-form").addEventListener('input',()=>{state.settingsDirty=true;});
+$("#selected-year").addEventListener('change',async event=>{state.selectedYear=Number(event.target.value);try{await loadMonth();}catch(e){toast(e.message);}});
 $("#search-trigger").onclick=()=>{$("#search-dialog").showModal();setTimeout(()=>$("#global-search").focus(),50)};
 $("#global-search").addEventListener("input",event=>{clearTimeout(state.searchTimer);state.searchTimer=setTimeout(()=>runSearch(event.target.value),180)});
 $("#new-item").onclick=()=>newItem(); $("#new-task").onclick=newTask; $("#settings-form").onsubmit=saveSettings;
