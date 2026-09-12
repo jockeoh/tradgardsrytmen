@@ -64,6 +64,8 @@ audited choice whose source/target mapping is stored in the approval receipt.
 
 Normal autodeploy takes the pre-migration backup, migrates, and then runs the idempotent cleanup
 with an additional integrity-checked backup and a revision-specific report in the state directory.
+If a process was started by an older installed deploy script, the missing revision report prevents
+the next timer run from exiting early, so the transition completes safely on retry.
 It does not run `replace_pending_research`; that command may call the research service and must
 remain a separately authorized operation. After release, verify the deployed revision, health,
 review queue and current/month views.

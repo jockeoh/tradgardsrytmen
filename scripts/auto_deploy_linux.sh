@@ -26,7 +26,8 @@ git_as_clawd fetch --quiet origin main
 LOCAL_REV=$(git_as_clawd rev-parse HEAD)
 REMOTE_REV=$(git_as_clawd rev-parse origin/main)
 DEPLOYED_REV=$(cat "$STATE_DIR/deployed_commit" 2>/dev/null || true)
-if [[ "$LOCAL_REV" == "$REMOTE_REV" && "$DEPLOYED_REV" == "$REMOTE_REV" ]]; then
+CARE_REPORT="$STATE_DIR/care-cleanup-$REMOTE_REV.json"
+if [[ "$LOCAL_REV" == "$REMOTE_REV" && "$DEPLOYED_REV" == "$REMOTE_REV" && -f "$CARE_REPORT" ]]; then
   exit 0
 fi
 
@@ -52,7 +53,6 @@ runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" seed_garden
 # This is a deterministic local transition: it queues legacy rules for human
 # review and archives only unambiguous automatic clutter. The command makes its
 # own integrity-checked database backup and never invokes research or a model.
-CARE_REPORT="$STATE_DIR/care-cleanup-$REMOTE_REV.json"
 runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" clean_care_content --apply --report "$CARE_REPORT"
 "$VENV/bin/python" "$APP/manage.py" collectstatic --noinput
 chmod -R a+rX "$APP/staticfiles"

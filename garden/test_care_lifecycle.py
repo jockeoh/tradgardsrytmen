@@ -380,6 +380,7 @@ class SQLiteConcurrencyTests(SimpleTestCase):
         self.assertIn('clean_care_content --apply --report',script)
         self.assertLess(script.index('migrate --noinput'),script.index('clean_care_content --apply --report'))
         self.assertLess(script.index('clean_care_content --apply --report'),script.index('collectstatic --noinput'))
+        self.assertIn('&& -f "$CARE_REPORT"',script)
         self.assertNotIn('replace_pending_research',script)
 
 
