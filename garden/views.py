@@ -47,6 +47,7 @@ def _item_json(item, detail=False):
     data = {
         "id": item.pk, "name": item.name, "canonical_name": item.canonical_name, "aliases": item.aliases,
         "category": item.category, "kind": item.kind, "cultivar": item.cultivar, "quantity": item.quantity,
+        "has_care_plan": item.plans.filter(status="active").exists(),
         "age_stage": item.age_stage, "area": area, "area_id": item.area_id,
         "location": item.location, "location_detail": item.location, "notes": item.notes, "icon": item.icon,
     }
@@ -160,11 +161,6 @@ def api_items(request):
         location=data.get("location_detail", data.get("location", "")), notes=data.get("notes", ""),
     )
     response = {"item": _item_json(item)}
-    try:
-        proposal = create_research_proposal(item, GardenSettings.load())
-        response["proposal"] = _plan_json(proposal.plan)
-    except ResearchError as exc:
-        response["research_error"] = str(exc)
     return JsonResponse(response, status=201)
 
 

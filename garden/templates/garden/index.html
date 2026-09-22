@@ -4,103 +4,107 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-  <meta name="theme-color" content="#214c3b">
+  <meta name="theme-color" content="#284e3b">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="default">
   <meta name="apple-mobile-web-app-title" content="Trädgårdsrytmen">
-  <meta name="description" content="Håll rytmen i trädgården, månad för månad.">
+  <meta name="description" content="En stund för din trädgård. Samla dina växter, följ årets skötsel och planera nästa gröna idé.">
   <link rel="manifest" href="{% static 'garden/manifest.webmanifest' %}">
+  <link rel="icon" href="{% static 'garden/icons/icon.svg' %}" type="image/svg+xml">
   <link rel="apple-touch-icon" href="{% static 'garden/icons/icon-192.png' %}">
-  <link rel="stylesheet" href="{% static 'garden/app.css' %}">
-  <link rel="stylesheet" href="{% static 'garden/task-detail.css' %}">
-  <link rel="stylesheet" href="{% static 'garden/work-rounds.css' %}">
-  <link rel="stylesheet" href="{% static 'garden/relevant-care.css' %}">
-  <title>Trädgårdsrytmen</title>
+  <link rel="stylesheet" href="{% static 'garden/app.css' %}?v=20260922b">
+  <title>Trädgårdsrytmen · Din trädgård, i din takt</title>
 </head>
 <body>
+  {% include 'garden/symbols.html' %}
   <a class="skip-link" href="#main">Hoppa till innehållet</a>
   <aside class="side-nav" aria-label="Huvudnavigation">
-    <div class="brand"><span class="brand-mark">T</span><span>Trädgårdsrytmen</span></div>
-    <button class="nav-link active" data-view="month"><span>◷</span> Nu</button>
-    <button class="nav-link" data-view="year"><span>○</span> Året</button>
-    <button class="nav-link" data-view="plants"><span>♧</span> Trädgården</button>
-    <button class="nav-link" data-view="settings"><span>⌁</span> Inställningar</button>
-    <div class="garden-place"><strong id="garden-city"></strong><span id="garden-exposure"></span></div>
+    <a class="brand" href="#month" aria-label="Trädgårdsrytmen, överblick"><span class="brand-mark"><svg class="icon"><use href="#i-sprout"/></svg></span><span>Trädgårds<span class="brand-second">rytmen<span class="brand-dot">.</span></span></span></a>
+    <p class="nav-caption">DITT GRÖNA RUM</p>
+    <nav class="nav-main">
+      <button class="nav-link active" data-view="month" aria-current="page"><svg class="icon"><use href="#i-grid"/></svg><span>Överblick</span><span class="nav-count hidden" id="nav-task-count" aria-hidden="true"></span></button>
+      <button class="nav-link" data-view="plants"><svg class="icon"><use href="#i-leaf"/></svg><span>Min trädgård</span></button>
+      <button class="nav-link" data-view="year"><svg class="icon"><use href="#i-calendar"/></svg><span>Årshjulet</span></button>
+      <button class="nav-link" data-view="shopping"><svg class="icon"><use href="#i-bag"/></svg><span>Inköpslista</span></button>
+    </nav>
+    <div class="sidebar-note"><svg class="sidebar-sprig" viewBox="0 0 100 110" fill="none" aria-hidden="true"><path d="M49 100C50 71 57 37 69 10M52 73C32 76 20 62 19 48c20-2 30 7 33 25ZM59 48c-2-18 8-32 26-33 2 18-10 30-26 33ZM48 96C30 95 22 85 24 73c16 1 24 11 24 23Z" stroke="currentColor" stroke-width="1.3"/></svg><p>Lite omtanke.<br>Mycket växtkraft.</p><span>Din trädgård, i din takt.</span></div>
+    <div class="sidebar-bottom">
+      <button class="nav-link" data-view="settings"><svg class="icon"><use href="#i-settings"/></svg><span>Inställningar</span></button>
+      <button class="garden-place" data-view="settings"><span class="place-icon"><svg class="icon"><use href="#i-pin"/></svg></span><span><strong id="garden-city">Din trädgård</strong><span id="garden-exposure"></span></span><svg class="icon small"><use href="#i-chevron-right"/></svg></button>
+    </div>
   </aside>
-
-  <main id="main">
+  <div class="app-shell">
     <header class="topbar">
-      <div><p class="eyebrow" id="garden-name">Trädgården</p><h1 id="view-title">Nu</h1></div>
-      <button class="search-trigger" id="search-trigger" aria-label="Sök i trädgården"><span>⌕</span><span class="search-label">Sök växt eller råd</span><kbd>⌘ K</kbd></button>
+      <div class="breadcrumb"><svg class="icon"><use href="#i-sprout"/></svg><span id="garden-name">Min trädgård</span><span class="breadcrumb-slash">/</span><h1 id="view-title">Överblick</h1></div>
+      <div class="topbar-actions"><button class="search-trigger" id="search-trigger" aria-label="Sök i trädgården"><svg class="icon"><use href="#i-search"/></svg><span>Sök i din trädgård</span><kbd>⌘ K</kbd></button><button class="icon-button mobile-settings" data-view="settings" aria-label="Inställningar"><svg class="icon"><use href="#i-settings"/></svg></button><button class="garden-avatar" data-view="settings" aria-label="Öppna trädgårdsprofil"><svg class="icon"><use href="#i-sprout"/></svg></button></div>
     </header>
-
-    <div id="loading" class="loading-state"><span class="spinner"></span><p>Hämtar trädgårdens rytm …</p></div>
-    <div id="error-state" class="empty-state hidden"><h2>Något gick snett</h2><p id="error-message"></p><button class="button" onclick="location.reload()">Försök igen</button></div>
-
-    <section class="view hidden" id="view-month" aria-labelledby="view-title">
-      <div class="month-hero">
-        <div class="hero-copy"><p class="hero-kicker" id="hero-date"></p><h2 id="hero-month">{{ month_name|capfirst }}</h2><p id="hero-next">Vi räknar ut nästa steg …</p></div>
-        <p id="progress-value" class="care-count" aria-live="polite"></p>
-      </div>
-      <div class="section-heading"><div><p class="eyebrow">Din rytm</p><h2>Viktig skötsel</h2></div><button class="text-button" id="new-task">+ Egen uppgift</button></div>
-      <div class="task-view-switch" role="group" aria-label="Gruppera uppgifter"><button type="button" data-task-view="work">Efter jobb</button><button type="button" data-task-view="area">Efter plats</button></div>
-      <button class="review-link button secondary" data-review>Granska förslag <span id="review-count"></span></button>
-      <div id="task-groups"></div>
-      <details id="on-demand"><summary>Vid behov</summary><div id="need-list"></div></details>
-    </section>
-
-    <section class="view hidden" id="view-year">
-      <div class="section-heading"><div><p class="eyebrow">Årshjul</p><h2>Hela trädgårdsåret</h2></div></div>
-      <p class="lead">Välj en månad för att se planerade arbeten och utförd historik.</p>
-      <label class="year-selector">År<input id="selected-year" type="number" min="1900" max="9999"></label>
-      <div class="year-grid" id="year-grid"></div>
-      <div id="month-detail" aria-live="polite"></div>
-    </section>
-
-    <section class="view hidden" id="view-plants">
-      <div class="section-heading"><div><p class="eyebrow">Det som växer</p><h2>Växter och odlingar</h2></div><button class="button" id="new-item">+ Lägg till</button></div>
-      <div class="quick-add"><span>Snabba tillägg</span><div id="quick-adds"></div></div>
-      <div class="plant-list" id="plant-list"></div>
-      <section class="settings-form area-settings" aria-labelledby="areas-heading">
-        <fieldset><legend id="areas-heading">Trädgårdsområden</legend><p class="muted">Du bestämmer områdena. Den fria platsdetaljen behålls och appen gissar aldrig var en växt står.</p>
-          <form id="new-area-form" class="new-area-form"><label>Nytt område<input name="name" maxlength="80" placeholder="Till exempel Framsidan" required></label><button class="button secondary" type="submit">Skapa område</button></form>
-          <div id="area-list" class="area-list"></div>
-        </fieldset>
-        <fieldset><legend>Placera växter</legend><p class="muted">Den befintliga platsdetaljen visas bredvid varje växt så att du kan välja område utan automatisk gissning.</p><div id="placement-review"></div></fieldset>
+    <main id="main" tabindex="-1">
+      <div id="loading" class="loading-state" role="status"><span class="spinner"></span><p>En stund, vi hämtar din trädgård …</p></div>
+      <div id="error-state" class="empty-state hidden" role="alert"><svg class="icon"><use href="#i-leaf"/></svg><h2>Vi når inte trädgården just nu</h2><p id="error-message"></p><button class="button" onclick="location.reload()">Försök igen</button></div>
+      <section class="view hidden" id="view-month" aria-label="Överblick">
+        <div class="page-heading"><div><p class="eyebrow" id="hero-date"></p><h2>En stund för din trädgård.</h2></div><button class="button secondary" data-new-item><svg class="icon"><use href="#i-plus"/></svg>Lägg till växt</button></div>
+        <section class="month-hero" aria-labelledby="hero-title">
+          <div class="hero-image" role="img" aria-label="En grönskande trädgård med slingrande grusgång och sensommarblommor"></div>
+          <div class="hero-copy"><p class="hero-kicker"><span class="season-dot"></span><span id="hero-month">{{ month_name|capfirst }}</span> I TRÄDGÅRDEN</p><h2 id="hero-title">Hitta lugnet. <br>Följ din <em>rytm.</em></h2><p id="hero-next">Små steg som gör gott för din trädgård.</p><button class="button" id="hero-action">Se din plan<svg class="icon"><use href="#i-arrow-right"/></svg></button><span class="hero-footnote">En sak i taget. Hela året.</span></div>
+          <span class="hero-season" id="hero-season"><svg class="icon small"><use href="#i-leaf"/></svg><span></span></span>
+        </section>
+        <div class="garden-stats" aria-label="Din trädgård i siffror">
+          <button class="stat" data-show-period="current"><span class="stat-icon"><svg class="icon"><use href="#i-checklist"/></svg></span><span><span class="stat-label">Att göra nu</span><strong id="stat-current">0</strong><span class="stat-detail">aktuella uppgifter</span></span><svg class="icon small stat-arrow"><use href="#i-arrow-up-right"/></svg></button>
+          <button class="stat" data-view="plants"><span class="stat-icon sage"><svg class="icon"><use href="#i-sprout"/></svg></span><span><span class="stat-label">Det som växer</span><strong id="stat-plants">0</strong><span class="stat-detail">växter & odlingar</span></span><svg class="icon small stat-arrow"><use href="#i-arrow-up-right"/></svg></button>
+          <button class="stat" data-current-year><span class="stat-icon peach"><svg class="icon"><use href="#i-check"/></svg></span><span><span class="stat-label">Det du gjort</span><strong id="stat-completed">0</strong><span class="stat-detail">utförda denna månad</span></span><svg class="icon small stat-arrow"><use href="#i-arrow-up-right"/></svg></button>
+        </div>
+        <p class="plan-coverage" id="plan-coverage"></p>
+        <div class="dashboard-columns">
+          <section class="care-panel" id="care-plan" aria-labelledby="care-heading">
+            <div class="section-heading"><div><p class="eyebrow">DIN RYTM</p><h2 id="care-heading">Dags att ge lite omtanke</h2></div><button class="text-button" id="new-task"><svg class="icon small"><use href="#i-plus"/></svg>Egen uppgift</button></div>
+            <div class="task-tabs" role="group" aria-label="Visa uppgifter"><button class="active" data-task-period="current" aria-pressed="true">Aktuellt <span id="count-current">0</span></button><button data-task-period="upcoming" aria-pressed="false">Kommande <span id="count-upcoming">0</span></button><button data-task-period="advice" aria-pressed="false">Vid behov <span id="count-advice">0</span></button></div>
+            <div class="task-toolbar" id="task-toolbar"><p id="task-summary"></p><div class="task-view-switch" role="group" aria-label="Gruppera uppgifter"><button type="button" data-task-view="work">Efter jobb</button><button type="button" data-task-view="area">Efter plats</button></div></div>
+            <button class="review-link hidden" data-review><span class="review-icon"><svg class="icon"><use href="#i-sparkle"/></svg></span><span><strong>Nya skötselråd att ta ställning till</strong><small id="review-count"></small></span><svg class="icon"><use href="#i-arrow-right"/></svg></button>
+            <div id="task-groups" aria-live="polite"></div>
+            <section id="on-demand" class="hidden" aria-label="Skötsel vid behov"><div id="need-list"></div></section>
+            <p class="care-footnote"><svg class="icon small"><use href="#i-leaf"/></svg>Lite i taget räcker långt.</p>
+          </section>
+          <aside class="dashboard-aside" aria-label="Säsong och planering">
+            <section class="calendar-card"><div class="aside-heading"><span class="eyebrow">TRÄDGÅRDENS KALENDER</span><svg class="icon"><use href="#i-calendar"/></svg></div><h3 id="calendar-title"></h3><div class="mini-calendar" id="mini-calendar" role="img"></div><button class="text-button" data-current-year>Öppna årshjulet<svg class="icon small"><use href="#i-arrow-right"/></svg></button></section>
+            <section class="soil-card"><div class="soil-illustration" aria-hidden="true"><svg viewBox="0 0 140 98"><path d="m27 48 45-20 44 20-44 23Z" fill="#a8b29a"/><path d="m27 48 45 23v20L27 69Z" fill="#9b795b"/><path d="m72 71 44-23v21L72 91Z" fill="#805f47"/><path d="m36 52 35-16 35 15-35 17Z" fill="#564e36"/><path d="M70 48V17m0 16C52 35 50 23 51 16c13 0 20 8 19 17Zm0-9C67 9 80 4 87 5c0 12-7 19-17 19Z" fill="#5c7250" stroke="#466343" stroke-width="1.4"/><path d="m36 69 25 12m26-3 20-10" fill="none" stroke="#c6a78a" stroke-width="1.2"/></svg></div><p class="eyebrow">NÄSTA GRÖNA IDÉ</p><h3>Allt börjar<br>med jorden.</h3><p>Räkna ut hur mycket jord du behöver till din nästa plantering.</p><button class="text-button" data-view="shopping">Planera dina inköp<svg class="icon small"><use href="#i-arrow-right"/></svg></button></section>
+          </aside>
+        </div>
+        <section class="garden-preview" aria-labelledby="garden-preview-heading"><div class="section-heading"><div><p class="eyebrow">DITT GRÖNA RUM</p><h2 id="garden-preview-heading">Det som växer hos dig</h2></div><button class="text-button" data-view="plants">Visa alla växter<svg class="icon small"><use href="#i-arrow-right"/></svg></button></div><div id="plant-preview" class="plant-preview-grid"></div></section>
       </section>
-    </section>
+      <section class="view hidden" id="view-year" aria-label="Årshjulet">
+        <div class="page-heading"><div><p class="eyebrow">EN TRÄDGÅRD, FYRA ÅRSTIDER</p><h2>Ett år att växa med.</h2><p class="lead">Från första knopp till vintervila. Hitta din rytm, månad för månad.</p></div><div class="year-selector"><button class="icon-button" data-year-step="-1" aria-label="Föregående år"><svg class="icon"><use href="#i-chevron-left"/></svg></button><label for="selected-year" class="sr-only">År</label><input id="selected-year" type="number" min="1900" max="9999"><button class="icon-button" data-year-step="1" aria-label="Nästa år"><svg class="icon"><use href="#i-chevron-right"/></svg></button></div></div>
+        <label class="mobile-month-selector">Månad<select id="selected-month"></select></label><div class="year-grid" id="year-grid"></div><section class="month-detail panel" id="month-detail" aria-live="polite"></section>
+      </section>
+      <section class="view hidden" id="view-plants" aria-label="Min trädgård">
+        <div class="page-heading"><div><p class="eyebrow">DITT GRÖNA RUM</p><h2>Här slår dina idéer rot.</h2><p class="lead">Alla dina växter, deras platser och den omtanke de behöver.</p></div><button class="button" id="new-item"><svg class="icon"><use href="#i-plus"/></svg>Lägg till växt</button></div>
+        <div class="plant-tools"><label class="plant-search"><svg class="icon"><use href="#i-search"/></svg><span class="sr-only">Filtrera dina växter</span><input id="plant-search" type="search" placeholder="Hitta en växt, sort eller plats …"></label><button class="text-button" id="manage-areas"><svg class="icon small"><use href="#i-pin"/></svg>Hantera områden</button></div>
+        <div class="plant-filters" id="plant-filters" role="group" aria-label="Filtrera efter växttyp"></div><p id="plant-result-count" class="sr-only" aria-live="polite"></p>
+        <div class="plant-list" id="plant-list"></div>
+        <div class="quick-add"><span>Vad vill du odla härnäst?</span><div id="quick-adds"></div></div>
+        <details class="area-settings" id="area-settings"><summary><span><svg class="icon"><use href="#i-pin"/></svg>Platser i din trädgård</span><svg class="icon"><use href="#i-chevron-down"/></svg></summary><div class="settings-form"><fieldset><legend>Trädgårdsområden</legend><p class="muted">Samla dina växter i exempelvis köksträdgården, framsidan eller vid uteplatsen.</p><form id="new-area-form" class="new-area-form"><label>Nytt område<input name="name" maxlength="80" placeholder="Till exempel Framsidan" required></label><button class="button secondary" type="submit">Skapa område</button></form><div id="area-list" class="area-list"></div></fieldset><fieldset><legend>Ge varje växt en plats</legend><p class="muted">Välj område för dina växter. Dina egna platsanteckningar finns kvar.</p><div id="placement-review"></div></fieldset></div></details>
+      </section>
+      <section class="view hidden" id="view-shopping" aria-label="Inköpslista">
+        <div class="page-heading"><div><p class="eyebrow">FRÅN IDÉ TILL PLANTERING</p><h2>Ge nästa idé en bra start.</h2><p class="lead">Räkna på jorden och samla det du behöver innan du åker till butiken.</p></div></div>
+        <div class="shopping-layout">
+          <section class="shopping-panel panel" aria-labelledby="shopping-heading"><div class="section-heading"><div><p class="eyebrow">TA MED TILL BUTIKEN</p><h2 id="shopping-heading">Din inköpslista</h2></div><span class="count-badge" id="shopping-count">0</span></div><p class="muted device-note"><svg class="icon small"><use href="#i-device"/></svg>Sparas på den här enheten.</p><form id="shopping-form" class="shopping-add"><label class="sr-only" for="shopping-name">Vad behöver du?</label><input id="shopping-name" name="name" maxlength="180" placeholder="Fröer, handskar, växtstöd …" required><button class="icon-button" type="submit" aria-label="Lägg till i inköpslistan"><svg class="icon"><use href="#i-plus"/></svg></button></form><div id="shopping-list" aria-live="polite"></div><p class="shopping-footer">Det bästa inköpet är det du faktiskt behöver.</p></section>
+          <details class="soil-calculator panel"><summary>Beräkna jord</summary><div class="soil-calculator-body"><div class="section-heading"><div><p class="eyebrow">LAGOM MYCKET, HELA VÄGEN</p><h2 id="soil-heading">Hur mycket jord går åt?</h2></div><span class="stat-icon sage"><svg class="icon"><use href="#i-sprout"/></svg></span></div><div class="shape-switch" role="group" aria-label="Form på planteringen"><button class="active" data-soil-shape="bed" aria-pressed="true"><svg class="icon"><use href="#i-bed"/></svg>Rabatt & pallkrage</button><button data-soil-shape="pot" aria-pressed="false"><svg class="icon"><use href="#i-pot"/></svg>Rund kruka</button></div>
+            <form id="soil-form"><div class="soil-fields"><label data-bed-dimension>Längd<span class="unit-input"><input name="length" type="number" min="1" max="100000" step="any" value="120" required><span>cm</span></span></label><label data-bed-dimension>Bredd<span class="unit-input"><input name="width" type="number" min="1" max="100000" step="any" value="80" required><span>cm</span></span></label><label class="hidden" data-pot-dimension>Diameter<span class="unit-input"><input name="diameter" type="number" min="1" max="100000" step="any" value="40" disabled required><span>cm</span></span></label><label>Djup att fylla<span class="unit-input"><input name="depth" type="number" min="1" max="100000" step="any" value="20" required><span>cm</span></span></label></div><label class="bag-size">Storlek på jordsäck<select name="bag_size"><option value="20">20 liter</option><option value="40" selected>40 liter</option><option value="50">50 liter</option><option value="60">60 liter</option></select></label><div class="soil-result" id="soil-result" aria-live="polite"></div><p class="calculator-note">En uppskattning utifrån dina mått. Runda krukor räknas som cylindrar; befintlig jord, rötter och avsmalnande sidor minskar åtgången.</p><button class="button" type="submit"><svg class="icon small"><use href="#i-plus"/></svg>Lägg jord i inköpslistan</button></form>
+          </div></details>
 
-    <section class="view hidden" id="view-settings">
-      <div class="section-heading"><div><p class="eyebrow">Anpassning</p><h2>Inställningar</h2></div></div>
-      <form class="settings-form" id="settings-form">
-        <fieldset><legend>Trädgårdsprofil</legend><div class="field-grid">
-          <label>Plats<input name="city" autocomplete="address-level2"></label>
-          <label>Odlingszon<input name="cultivation_zone" inputmode="numeric"></label>
-          <label class="wide">Läge<input name="exposure"></label>
-        </div><button class="button" type="submit">Spara profil</button></fieldset>
-        <fieldset><legend>Notiser på den här enheten</legend><p class="muted">Avstängt tills du väljer att aktivera. Kräver att appen är installerad på iPhone.</p>
-          <label class="switch-row"><span><strong>Månadssammanfattning</strong><small>En lugn överblick i början av månaden</small></span><input type="checkbox" id="notify-monthly"></label>
-          <label class="switch-row"><span><strong>Uppgiftspåminnelser</strong><small>Påminn om sådant som är dags nu</small></span><input type="checkbox" id="notify-tasks"></label>
-          <button class="button secondary" type="button" id="save-notifications">Aktivera och spara</button>
-          <button class="text-button" type="button" id="test-notification">Skicka testnotis</button>
-        </fieldset>
-        <fieldset><legend>AI-förslag</legend><p>AI lägger aldrig till uppgifter själv. Alla råd hamnar först i din granskningskö.</p><p><strong id="proposal-count">0</strong> förslag väntar på granskning.</p></fieldset>
-      </form>
-
-    </section>
-  </main>
-
-  <nav class="bottom-nav" aria-label="Huvudnavigation">
-    <button class="nav-link active" data-view="month"><span>◷</span><small>Nu</small></button>
-    <button class="nav-link" data-view="year"><span>○</span><small>Året</small></button>
-    <button class="nav-link" data-view="plants"><span>♧</span><small>Trädgården</small></button>
-    <button class="nav-link" data-view="settings"><span>⌁</span><small>Inställningar</small></button>
-  </nav>
-
-  <dialog id="search-dialog" class="search-dialog"><form method="dialog"><button class="dialog-close" aria-label="Stäng">×</button></form><label for="global-search">Sök i trädgården</label><input id="global-search" type="search" placeholder="Prova Flammantz, beskärning …" autocomplete="off"><div id="search-results" class="search-results"><p class="muted">Sök bland växter, sorter, alias, råd och uppgifter.</p></div></dialog>
-  <dialog id="form-dialog" class="sheet-dialog"><form id="dynamic-form"><button class="dialog-close" type="button" data-close aria-label="Stäng formulär">×</button><div id="form-content"></div></form></dialog>
-  <dialog id="detail-dialog" class="detail-dialog"><button class="dialog-close" type="button" data-close-detail aria-label="Stäng detaljer">×</button><div id="detail-content"></div></dialog>
+        </div>
+      </section>
+      <section class="view hidden" id="view-settings" aria-label="Inställningar">
+        <div class="page-heading"><div><p class="eyebrow">PÅ DINA VILLKOR</p><h2>En trädgård som är din.</h2><p class="lead">Din plats, dina påminnelser och din takt.</p></div></div>
+        <form class="settings-form" id="settings-form"><fieldset class="panel"><legend>Din trädgårdsprofil</legend><div class="field-grid"><label class="wide">Trädgårdens namn<input name="garden_name" maxlength="120" required></label><label>Plats<input name="city" autocomplete="address-level2" maxlength="80"></label><label>Odlingszon<input name="cultivation_zone" maxlength="20" inputmode="numeric"></label><label class="wide">Läge<input name="exposure" maxlength="160" placeholder="Till exempel skyddat och kustnära"></label></div><button class="button" type="submit">Spara profil</button></fieldset><fieldset class="panel"><legend>En vänlig påminnelse</legend><p class="muted">Välj om du vill ha notiser på den här enheten. På iPhone behöver appen vara installerad på hemskärmen.</p><label class="switch-row"><span><strong>Månadssammanfattning</strong><small>En lugn överblick i början av månaden</small></span><input type="checkbox" id="notify-monthly" role="switch"></label><label class="switch-row"><span><strong>Uppgiftspåminnelser</strong><small>När det är dags att ge lite omtanke</small></span><input type="checkbox" id="notify-tasks" role="switch"></label><div class="form-actions"><button class="button secondary" type="button" id="save-notifications">Aktivera och spara</button><button class="text-button" type="button" id="test-notification">Skicka testnotis</button></div></fieldset><fieldset class="panel"><legend>Du bestämmer över råden</legend><p class="muted">Nya skötselförslag väntar alltid på din granskning innan de blir en del av din plan.</p><button class="text-button" type="button" data-review>Granska förslag<span class="count-badge" id="proposal-count">0</span><svg class="icon small"><use href="#i-arrow-right"/></svg></button></fieldset></form>
+      </section>
+      <footer class="app-footer"><svg class="icon small"><use href="#i-sprout"/></svg>Trädgårdsrytmen<span>Din trädgård, i din takt.</span></footer>
+    </main>
+  </div>
+  <nav class="bottom-nav" aria-label="Mobilnavigation"><button class="nav-link active" data-view="month" aria-current="page"><svg class="icon"><use href="#i-grid"/></svg><small>Överblick</small></button><button class="nav-link" data-view="plants"><svg class="icon"><use href="#i-leaf"/></svg><small>Min trädgård</small></button><button class="nav-link" data-view="year"><svg class="icon"><use href="#i-calendar"/></svg><small>Årshjulet</small></button><button class="nav-link" data-view="shopping"><svg class="icon"><use href="#i-bag"/></svg><small>Inköp</small></button></nav>
+  <dialog id="search-dialog" class="search-dialog" aria-labelledby="search-heading"><form method="dialog"><button class="dialog-close" aria-label="Stäng sökningen"><svg class="icon"><use href="#i-close"/></svg></button></form><p class="eyebrow">I DITT GRÖNA RUM</p><h2 id="search-heading">Vad letar du efter?</h2><label for="global-search" class="sr-only">Sök i trädgården</label><input id="global-search" type="search" placeholder="En växt, en sort eller ett skötselråd …" autocomplete="off"><div id="search-results" class="search-results" aria-live="polite"><p class="muted">Sök bland dina växter, råd och uppgifter.</p></div><p class="search-hint"><kbd>esc</kbd> för att stänga</p></dialog>
+  <dialog id="form-dialog" class="sheet-dialog" aria-labelledby="form-title"><form id="dynamic-form"><button class="dialog-close" type="button" data-close aria-label="Stäng formulär"><svg class="icon"><use href="#i-close"/></svg></button><div id="form-content"></div></form></dialog>
+  <dialog id="detail-dialog" class="detail-dialog" aria-label="Trädgårdsdetaljer"><button class="dialog-close" type="button" data-close-detail aria-label="Stäng detaljer"><svg class="icon"><use href="#i-close"/></svg></button><div id="detail-content"></div></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="{% static 'garden/app.js' %}" defer></script>
+  <script src="{% static 'garden/app.js' %}?v=20260922b" defer></script>
 </body>
 </html>

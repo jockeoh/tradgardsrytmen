@@ -4,7 +4,7 @@ The default settings support local development. Copy values from `.env.example` 
 
 ## Optional integrations
 
-Set `OPENAI_API_KEY` to enable care research. Adding a plant or requesting new advice sends its details, notes and garden profile to the configured research service. Suggestions remain pending until reviewed. With no key, manual features continue to work. `TRADGARDSRYTMEN_OPENAI_MODEL` selects the model.
+Set `OPENAI_API_KEY` to enable care research. Saving a plant does not start research. Explicitly requesting new advice sends plant details, notes, garden profile and care history to the configured research service. Suggestions remain pending until reviewed. With no key, manual features continue to work. `TRADGARDSRYTMEN_OPENAI_MODEL` selects the model.
 
 Web Push requires a secure browser context and permission on each device. Configure `TRADGARDSRYTMEN_VAPID_SUBJECT` with your own contact address. The application creates a private signing key in the data directory; never commit it. iPhone notifications require installation on the home screen.
 
