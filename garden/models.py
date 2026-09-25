@@ -1,10 +1,13 @@
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.db import models
 from django.utils import timezone
+from uuid import uuid4
 from .work_categories import WORK_CATEGORY_CHOICES
 
 
 class GardenSettings(models.Model):
+    garden = models.OneToOneField("Garden", on_delete=models.PROTECT, null=True, blank=True, related_name="settings")
     garden_name = models.CharField(max_length=120, default="Vår trädgård")
     city = models.CharField(max_length=80, default="Karlskrona")
     cultivation_zone = models.CharField(max_length=20, default="1")
@@ -16,21 +19,28 @@ class GardenSettings(models.Model):
     updated_at = models.DateTimeField(auto_now=True)
 
     @classmethod
-    def load(cls):
-        return cls.objects.filter(pk=1).first() or cls(pk=1)
+    def load(cls, garden=None):
+        if garden is None:
+            return cls.objects.filter(garden__isnull=True, pk=1).first() or cls(pk=1)
+        return cls.objects.filter(garden=garden).first() or cls(garden=garden, garden_name=garden.name)
 
 
 class GardenArea(models.Model):
-    name = models.CharField(max_length=80, unique=True)
+    garden = models.ForeignKey("Garden", on_delete=models.PROTECT, null=True, blank=True, related_name="areas")
+    name = models.CharField(max_length=80)
     sort_order = models.PositiveSmallIntegerField(default=0)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
     class Meta:
         ordering = ["sort_order", "name"]
+        constraints = [models.UniqueConstraint(fields=["garden", "name"], name="unique_garden_area_name")]
 
 
 class GardenItem(models.Model):
+    public_id = models.UUIDField(default=uuid4, unique=True, editable=False)
+    garden = models.ForeignKey("Garden", on_delete=models.PROTECT, null=True, blank=True, related_name="items")
+    version = models.PositiveIntegerField(default=1)
     INDIVIDUAL = "individual"
     GROUP = "group"
     BED = "bed"
@@ -53,6 +63,11 @@ class GardenItem(models.Model):
 
     class Meta:
         ordering = ["name"]
+
+    def save(self, *args, **kwargs):
+        if self.area_id and self.area.garden_id != self.garden_id:
+            raise ValidationError("Området måste tillhöra samma trädgård som växten.")
+        return super().save(*args, **kwargs)
 
 
 class CarePlanVersion(models.Model):
@@ -100,6 +115,11 @@ class WorkIdentity(models.Model):
     class Meta:
         constraints = [models.UniqueConstraint(fields=["item", "action_key", "scope"], name="unique_item_work_scope")]
 
+    def save(self, *args, **kwargs):
+        if self.merged_into_id and self.merged_into.item_id != self.item_id:
+            raise ValidationError("Sammanslagna arbeten måste tillhöra samma växt.")
+        return super().save(*args, **kwargs)
+
 
 class CareRule(models.Model):
     ADVICE_CHOICES = [("planned", "Planerat arbete"), ("on_demand", "Vid behov"), ("general", "Allmänt råd"), ("review", "Kräver granskning")]
@@ -130,6 +150,13 @@ class CareRule(models.Model):
     reminder_day = models.PositiveSmallIntegerField(default=8)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    def save(self, *args, **kwargs):
+        for relation in ("plan", "work", "identity_source"):
+            related_id = getattr(self, f"{relation}_id")
+            if related_id and getattr(self, relation).item_id != self.item_id:
+                raise ValidationError(f"{relation} måste tillhöra samma växt som skötselregeln.")
+        return super().save(*args, **kwargs)
+
 
 class ResearchProposal(models.Model):
     STATUS_CHOICES = [("pending", "Väntar"), ("approved", "Godkänd"), ("rejected", "Avvisad"), ("superseded", "Ersatt"), ("failed", "Misslyckad")]
@@ -142,8 +169,15 @@ class ResearchProposal(models.Model):
     created_at = models.DateTimeField(auto_now_add=True)
     reviewed_at = models.DateTimeField(null=True, blank=True)
 
+    def save(self, *args, **kwargs):
+        if self.plan_id and self.plan.item_id != self.item_id:
+            raise ValidationError("Planen måste tillhöra samma växt som förslaget.")
+        return super().save(*args, **kwargs)
+
 
 class TaskOccurrence(models.Model):
+    public_id = models.UUIDField(default=uuid4, unique=True, editable=False)
+    version = models.PositiveIntegerField(default=1)
     work = models.ForeignKey(WorkIdentity, on_delete=models.PROTECT, null=True, blank=True, related_name="occurrences")
     identity_slot = models.CharField(max_length=240, unique=True, null=True, blank=True)
     archive_reason = models.CharField(max_length=240, blank=True)
@@ -171,8 +205,17 @@ class TaskOccurrence(models.Model):
         ordering = ["window_end", "window_start", "title"]
         indexes = [models.Index(fields=["status", "window_start", "window_end"]), models.Index(fields=["item", "occurrence_month"])]
 
+    def save(self, *args, **kwargs):
+        for relation in ("rule", "work"):
+            related_id = getattr(self, f"{relation}_id")
+            if related_id and getattr(self, relation).item_id != self.item_id:
+                raise ValidationError(f"{relation} måste tillhöra samma växt som uppgiften.")
+        return super().save(*args, **kwargs)
+
 
 class PushSubscription(models.Model):
+    garden = models.ForeignKey("Garden", on_delete=models.PROTECT, null=True, blank=True, related_name="push_subscriptions")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="push_subscriptions")
     endpoint = models.URLField(max_length=1000, unique=True)
     p256dh = models.CharField(max_length=500)
     auth = models.CharField(max_length=500)
@@ -182,6 +225,11 @@ class PushSubscription(models.Model):
     active = models.BooleanField(default=True)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
+
+    def save(self, *args, **kwargs):
+        if self.garden_id and self.user_id and not GardenMembership.objects.filter(garden_id=self.garden_id, user_id=self.user_id).exists():
+            raise ValidationError("Pushmottagaren måste ha ett aktuellt medlemskap i trädgården.")
+        return super().save(*args, **kwargs)
 
 
 class ReminderDelivery(models.Model):
@@ -194,9 +242,16 @@ class ReminderDelivery(models.Model):
     status = models.CharField(max_length=20, default="pending")
     error = models.TextField(blank=True)
 
+    def save(self, *args, **kwargs):
+        if self.occurrence_id and self.subscription.garden_id != self.occurrence.item.garden_id:
+            raise ValidationError("Påminnelsen och uppgiften måste tillhöra samma trädgård.")
+        return super().save(*args, **kwargs)
+
 
 class Garden(models.Model):
+    public_id = models.UUIDField(default=uuid4, unique=True, editable=False)
     name = models.CharField(max_length=120)
+    version = models.PositiveIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
 
@@ -216,3 +271,20 @@ class GardenMembership(models.Model):
             models.UniqueConstraint(fields=["garden", "user"], name="unique_garden_user"),
             models.CheckConstraint(condition=models.Q(role__in=["owner", "member"]), name="valid_garden_member_role"),
         ]
+
+
+class IdempotencyRecord(models.Model):
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="idempotency_records")
+    method = models.CharField(max_length=10)
+    path = models.CharField(max_length=500)
+    key = models.UUIDField()
+    request_hash = models.CharField(max_length=64)
+    response_status = models.PositiveSmallIntegerField(null=True, blank=True)
+    response_body = models.JSONField(null=True, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["user", "method", "path", "key"], name="unique_idempotent_request")
+        ]
+        indexes = [models.Index(fields=["created_at"])]

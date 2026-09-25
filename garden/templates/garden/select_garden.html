@@ -1,0 +1,28 @@
+{% load static %}
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <link rel="stylesheet" href="{% static 'garden/app.css' %}?v=20260925p2">
+  <title>Välj trädgård · Trädgårdsrytmen</title>
+</head>
+<body class="login-page">
+  <main class="login-card">
+    <p class="eyebrow">DITT GRÖNA RUM</p>
+    <h1>Vilken trädgård vill du öppna?</h1>
+    {% if error %}<p role="alert">{{ error }}</p>{% endif %}
+    {% if memberships %}
+      <form method="post">
+        {% csrf_token %}
+        {% for membership in memberships %}
+          <button class="button secondary" type="submit" name="garden_id" value="{{ membership.garden.public_id }}">{{ membership.garden.name }} · {{ membership.get_role_display }}</button>
+        {% endfor %}
+      </form>
+    {% else %}
+      <p>Kontot har ännu ingen trädgård. Skapa en i mobilappen eller be administratören om åtkomst.</p>
+    {% endif %}
+    <form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="text-button" type="submit">Logga ut</button></form>
+  </main>
+</body>
+</html>

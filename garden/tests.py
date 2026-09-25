@@ -11,11 +11,12 @@ from .research import ResearchError, approve_proposal, create_research_proposal
 from .care_contract import plan_comparison
 from .tasks import archive_pre_activation_backlog, dashboard_for, materialize_rule, months_for_season
 from .work_categories import WORK_CATEGORIES, normalize_work_category, suggested_work_category
+from .testing import TenantTestCase
 
 
-class TaskMaterializationTests(TestCase):
+class TaskMaterializationTests(TenantTestCase):
     def setUp(self):
-        self.item = GardenItem.objects.create(name="Äppelträd")
+        self.item = GardenItem.objects.create(garden=self.tenant_garden, name="Äppelträd")
 
     def rule(self, **overrides):
         values = {"item": self.item, "title": "Beskär varsamt", "cadence": "seasonal", "start_month": 11, "end_month": 2, "active": True}
@@ -55,7 +56,7 @@ class TaskMaterializationTests(TestCase):
         old_generated = TaskOccurrence.objects.create(item=self.item, rule=rule, title="Gammal", occurrence_key="generated:old", season_year=2026, occurrence_month=7, window_start=date(2026, 7, 1), window_end=date(2026, 7, 31))
         current_generated = TaskOccurrence.objects.create(item=self.item, rule=rule, title="Nu", occurrence_key="generated:current", season_year=2026, occurrence_month=8, window_start=date(2026, 8, 1), window_end=date(2026, 8, 31))
         manual_old = TaskOccurrence.objects.create(item=self.item, title="Egen gammal", occurrence_key="manual:old", season_year=2026, occurrence_month=7, window_start=date(2026, 7, 1), window_end=date(2026, 7, 31), manual=True)
-        self.assertEqual(archive_pre_activation_backlog(), 1)
+        self.assertEqual(archive_pre_activation_backlog(self.tenant_garden), 1)
         old_generated.refresh_from_db(); current_generated.refresh_from_db(); manual_old.refresh_from_db()
         self.assertEqual(old_generated.status, "skipped")
         self.assertIn("Automatiskt undanlagd", old_generated.note)
@@ -77,8 +78,8 @@ class TaskMaterializationTests(TestCase):
     def test_overdue_completed_skipped_and_reopen(self):
         past = timezone.localdate().replace(day=1) - timedelta(days=2)
         task = TaskOccurrence.objects.create(item=self.item, title="Gammal", occurrence_key="manual:old", season_year=past.year, occurrence_month=past.month, window_start=past, window_end=past, manual=True)
-        self.assertIn(task, dashboard_for()["overdue"])
-        client = Client()
+        self.assertIn(task, dashboard_for(self.tenant_garden)["overdue"])
+        client = self.client
         self.assertEqual(client.patch(f"/api/tasks/{task.pk}/", json.dumps({"status":"completed"}), content_type="application/json").status_code, 200)
         task.refresh_from_db(); self.assertEqual(task.status, "completed"); self.assertIsNotNone(task.completed_at)
         client.patch(f"/api/tasks/{task.pk}/", json.dumps({"status":"skipped"}), content_type="application/json")
@@ -87,10 +88,10 @@ class TaskMaterializationTests(TestCase):
         task.refresh_from_db(); self.assertEqual(task.status, "pending"); self.assertIsNone(task.skipped_at)
 
 
-class ProposalTests(TestCase):
+class ProposalTests(TenantTestCase):
     def setUp(self):
-        self.item = GardenItem.objects.create(name="Hallon", category="Bär")
-        self.garden = GardenSettings.load()
+        self.item = GardenItem.objects.create(garden=self.tenant_garden, name="Hallon", category="Bär")
+        self.garden = GardenSettings.load(self.tenant_garden)
 
     def response(self, source_urls=None):
         source_urls = source_urls if source_urls is not None else ["https://www.slu.se/rad/hallon"]
@@ -239,9 +240,9 @@ class ProposalTests(TestCase):
         self.assertEqual(mocked_open.call_count, 2)
 
 
-class ApiAndSearchTests(TestCase):
+class ApiAndSearchTests(TenantTestCase):
     def setUp(self):
-        self.item = GardenItem.objects.create(name="Rosen Flammentanz", canonical_name="Ros", cultivar="Flammentanz", aliases=["Flammantz"], category="Rosor")
+        self.item = GardenItem.objects.create(garden=self.tenant_garden, name="Rosen Flammentanz", canonical_name="Ros", cultivar="Flammentanz", aliases=["Flammantz"], category="Rosor")
 
     def test_alias_and_swedish_search(self):
         response = self.client.get("/api/search/?q=Flammantz")
@@ -270,7 +271,7 @@ class ApiAndSearchTests(TestCase):
         self.assertEqual(task.status, "pending")
 
     def test_existing_item_can_be_edited_with_cultivar_and_facts(self):
-        area = GardenArea.objects.create(name="Framsidan")
+        area = GardenArea.objects.create(garden=self.tenant_garden, name="Framsidan")
         response = self.client.patch(f"/api/items/{self.item.pk}/", json.dumps({"cultivar":"New Dawn","quantity":2,"area_id":area.pk,"location_detail":"Söderväggen","age_stage":"Etablerad"}), content_type="application/json")
         self.assertEqual(response.status_code, 200)
         self.item.refresh_from_db()
@@ -292,7 +293,7 @@ class ApiAndSearchTests(TestCase):
         self.assertIsNone(self.item.area)
 
     def test_task_api_includes_category_area_and_location_detail(self):
-        area = GardenArea.objects.create(name="Framsidan")
+        area = GardenArea.objects.create(garden=self.tenant_garden, name="Framsidan")
         self.item.area = area
         self.item.location = "Vid muren"
         self.item.save(update_fields=["area", "location"])
@@ -308,25 +309,25 @@ class ApiAndSearchTests(TestCase):
         self.assertEqual(self.client.get("/sw.js").status_code, 200)
 
 
-class ReminderTests(TestCase):
+class ReminderTests(TenantTestCase):
     @patch("garden.push._send", return_value=(True, ""))
     def test_delivery_is_deduplicated_per_device(self, mocked_send):
-        garden = GardenSettings.load(); garden.reminder_hour=9; garden.reminder_weekday=0; garden.save()
-        item=GardenItem.objects.create(name="Tomat")
+        garden = GardenSettings.load(self.tenant_garden); garden.reminder_hour=9; garden.reminder_weekday=0; garden.save()
+        item=GardenItem.objects.create(garden=self.tenant_garden, name="Tomat")
         today=date(2026,8,10)
         TaskOccurrence.objects.create(item=item,title="Vattna",occurrence_key="tomato:water",season_year=2026,occurrence_month=8,window_start=today,window_end=today)
-        PushSubscription.objects.create(endpoint="https://push.example/a",p256dh="x",auth="y",task_reminders=True)
+        PushSubscription.objects.create(garden=self.tenant_garden,user=self.tenant_user,endpoint="https://push.example/a",p256dh="x",auth="y",task_reminders=True)
         now=timezone.make_aware(timezone.datetime(2026,8,10,9,0))
-        self.assertEqual(send_due_reminders(now),1)
-        self.assertEqual(send_due_reminders(now),0)
+        self.assertEqual(send_due_reminders(self.tenant_garden, now),1)
+        self.assertEqual(send_due_reminders(self.tenant_garden, now),0)
         self.assertEqual(ReminderDelivery.objects.count(),1)
         self.assertEqual(mocked_send.call_count,1)
 
 
-class SeedGardenTests(TestCase):
+class SeedGardenTests(TenantTestCase):
     def test_seed_preserves_profile_and_renamed_starter_without_duplicate(self):
-        call_command("seed_garden", verbosity=0)
-        garden = GardenSettings.load()
+        call_command("seed_garden", garden=str(self.tenant_garden.public_id), verbosity=0)
+        garden = GardenSettings.load(self.tenant_garden)
         garden.city = "Ronneby"
         garden.save(update_fields=["city"])
         tomato = GardenItem.objects.get(name="Tomater")
@@ -335,7 +336,7 @@ class SeedGardenTests(TestCase):
         tomato.cultivar = "Ravello"
         tomato.notes = "Min egen anteckning"
         tomato.save(update_fields=["name", "kind", "cultivar", "notes"])
-        call_command("seed_garden", verbosity=0)
+        call_command("seed_garden", garden=str(self.tenant_garden.public_id), verbosity=0)
         garden.refresh_from_db()
         tomato.refresh_from_db()
         self.assertEqual(garden.city, "Ronneby")
@@ -343,7 +344,7 @@ class SeedGardenTests(TestCase):
         self.assertEqual(GardenItem.objects.filter(canonical_name="Tomat", icon="tomato").count(), 1)
 
 
-class WorkCategoryTests(TestCase):
+class WorkCategoryTests(TenantTestCase):
     def test_title_action_wins_over_incidental_words_in_instructions(self):
         self.assertEqual(suggested_work_category("Sommarinspektera frukt och krona"), "Kontrollera")
         self.assertEqual(suggested_work_category("Följ skadegörare och svampsjukdomar"), "Kontrollera")
@@ -354,7 +355,7 @@ class WorkCategoryTests(TestCase):
         self.assertEqual(suggested_work_category("Förbättra jord och marktäck"), "Jord och ogräs")
 
     def test_repair_updates_open_snapshot_and_archives_only_pending_to_dont(self):
-        item = GardenItem.objects.create(name="Testväxt")
+        item = GardenItem.objects.create(garden=self.tenant_garden, name="Testväxt")
         inspect = CareRule.objects.create(item=item, title="Sommarinspektera frukt och krona", category="Vattna", active=True)
         inspect_task = TaskOccurrence.objects.create(item=item, rule=inspect, title=inspect.title, category="Vattna", occurrence_key="repair:inspect", season_year=2026, occurrence_month=8, window_start=date(2026,8,1), window_end=date(2026,8,31))
         negative = CareRule.objects.create(item=item, title="Avstå från kraftig beskärning", category="Beskära och binda upp", active=True)

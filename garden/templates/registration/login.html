@@ -1,0 +1,26 @@
+{% load static %}
+<!doctype html>
+<html lang="sv">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#284e3b">
+  <link rel="stylesheet" href="{% static 'garden/app.css' %}?v=20260925p2">
+  <title>Logga in · Trädgårdsrytmen</title>
+</head>
+<body class="login-page">
+  <main class="login-card">
+    <p class="eyebrow">DITT GRÖNA RUM</p>
+    <h1>Välkommen tillbaka.</h1>
+    <p>Logga in för att öppna din trädgård och bevarade historik.</p>
+    {% if form.errors %}<p role="alert">Kontrollera användarnamn och lösenord.</p>{% endif %}
+    <form method="post">
+      {% csrf_token %}
+      <label>Användarnamn {{ form.username }}</label>
+      <label>Lösenord {{ form.password }}</label>
+      {% if next %}<input type="hidden" name="next" value="{{ next }}">{% endif %}
+      <button class="button" type="submit">Logga in</button>
+    </form>
+  </main>
+</body>
+</html>

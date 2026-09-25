@@ -88,8 +88,10 @@ def validate_rule(rule, activation=False):
 
 
 def care_context(item):
-    item = GardenItem.objects.get(pk=item.pk)
-    garden = GardenSettings.load()
+    item = GardenItem.objects.select_related('garden').get(pk=item.pk)
+    # Unassigned rows are supported only during the explicit legacy migration.
+    # Every garden-owned path must use that garden's profile in research context.
+    garden = GardenSettings.load(item.garden) if item.garden_id else GardenSettings.load()
     return {
         'today': timezone.localdate().isoformat(),
         'plant': {f: getattr(item, f) for f in ['id', 'name', 'cultivar', 'quantity', 'kind', 'category', 'age_stage', 'area_id', 'location', 'notes', 'updated_at']},

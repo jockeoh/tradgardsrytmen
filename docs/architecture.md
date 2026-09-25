@@ -13,9 +13,12 @@ ett betrott hushåll. Webbläsaren sparar inköpslistan lokalt; service worker
 cachar skalet men erbjuder inte offline-redigering av trädgårdsdata.
 Se även [nuvarande driftgränser](deployment.md).
 
-P1 tillför nu en lokal konto-/trädgårdsgrund med auth och egen User, men
-fortfarande inga sessionsappar, inloggningsflöden eller kundisolerade endpoints.
-Se [övergångsinventering](multiuser-transition.md) och [API-förslag](api-v1.md).
+P1 tillförde konto-/trädgårdsgrunden. P2 aktiverar nu säkra Django-sessioner
+för privat webb, trädgårdsägarskap, medlemskapsavgränsning, opaka API-ID:n,
+versioner, idempotenskvitton och `/api/v1/` för kärnflödet. Bearer-verifiering
+är leverantörsneutral och fail-closed tills issuer, audience och JWKS uttryckligen
+konfigureras. Se [övergångsinventering](multiuser-transition.md) och
+[API-kontrakt](api-v1.md).
 
 ## Arbetsriktning
 
@@ -34,21 +37,30 @@ Mobilappen använder TypeScript. Skötselregler och behörigheter avgörs på
 servern; de ska inte kopieras till mobilappen. Delad kod mellan iOS och
 Android ersätter inte plattformsspecifika tester.
 
-Django REST Framework och PostgreSQL är föreslagna teknikval. Inför inte
-ett databasbyte i samma ändring som den första kontomodellen. Val av
-identitetsleverantör, jobbsystem och betalningsleverantör är öppet.
+Django REST Framework och PostgreSQL är föreslagna senare teknikval; P2:s
+lilla kärn-API använder Django direkt. Jobbsystem och betalningsleverantör är
+öppna. Identitetsriktningen beslutades 2026-09-25: Auth0 i EU-region med
+Authorization Code + PKCE, verifierbara Universal Links/App Links, roterande
+refresh-token och återkallning. Beslutet aktiverar eller beställer ingen extern
+tjänst i P2.
 
 ## Identitet och ägarskap
 
 Målrelationer: användare → medlemskap → trädgård → områden och växter.
 En användare kan ha flera medlemskap; en trädgård kan ha flera medlemmar.
-Medlemskap är unikt per användare och trädgård. Föreslagna roller är ägare
-och medlem. Roller behöver en explicit rättighetsmatris före API-implementation.
+Medlemskap är unikt per användare och trädgård. Roller är ägare och medlem;
+första flödets explicita rättighetsmatris finns i API-kontraktet. Medlems- och
+raderingsadministration är avsiktligt inte exponerad ännu.
 
-Använd Djangos autentiseringsmekanismer som grund, med en egen användarmodell
-från första auth-migreringen. Bygg inte egen lösenordskryptografi. Val av
-mobil inloggningsmetod, verifiering, sessionslivslängd och återkallning ska
-dokumenteras innan autentiserade mobila endpoints införs.
+Privat webb använder Djangos sessionsauth, lösenordshantering och CSRF. Mobil-
+API:t verifierar RS256, JWKS, issuer, audience, exp, iat och scope med ett
+etablerat JWT-bibliotek. `(issuer, subject)` är enda automatiskt stabila
+identitetsnyckel; email länkar aldrig konton. Lokal `revoked_before` spärrar
+redan utfärdade access-token. Under pilot länkas varje nytt subject uttryckligen
+av administratör; automatisk provisionering är avstängd. Access-token gäller
+10 minuter. Refresh-token roteras med återanvändningsdetektion, 30 dagars
+absolut och 14 dagars inaktiv livslängd. Leverantörens verkliga logout/revoke-
+flöde ska integreras och provas innan aktivering.
 
 Områden och växter ska få trädgårdstillhörighet. Planer, regler, uppgifter
 och källor kan härleda tillhörigheten via växten, förutsatt att alla
@@ -77,10 +89,11 @@ Behåll privat drift tills alla tillgängliga datavägar är skyddade.
 
 ## API och klienter
 
-Föreslagen bas är `/api/v1/`. Skriv ett konkret kontrakt för första flödet:
+Basen är `/api/v1/`. P2 implementerar det konkreta kontraktet för första flödet:
 inloggat konto, skapa/lista trädgårdar, skapa/lista växter samt skapa,
 läsa och slutföra manuella uppgifter. Ange fält, datumformat, fel,
-behörigheter, exempel och återförsök. Identifierare ska vara opaka för klienten.
+behörigheter, exempel och återförsök. Servern använder UUID-strängar, men
+identifierarna ska fortfarande behandlas som opaka av klienten.
 
 Kontraktet ska kunna användas för mobilens exempeldata före färdig server.
 Bakåtkompatibilitet behövs eftersom installerade mobilversioner kan vara
@@ -124,6 +137,11 @@ mikroservicar utan ett faktiskt behov.
 
 - [Expo: gemensam app för iOS och Android](https://docs.expo.dev/tutorial/introduction/)
 - [Django REST Framework](https://www.django-rest-framework.org/)
+- [Auth0: Authorization Code med PKCE](https://auth0.com/docs/api/authentication/authorization-code-flow-with-pkce/authorize-with-pkce)
+- [Auth0: EU-region för tenant](https://auth0.com/docs/get-started/auth0-overview/create-tenants)
+- [Auth0: verifierbara Universal Links/App Links](https://auth0.com/docs/secure/security-guidance/measures-against-app-impersonation)
+- [Auth0: refresh-tokenrotation](https://auth0.com/docs/secure/tokens/refresh-tokens/use-refresh-token-rotation)
+- [PyJWT: JWKS, issuer och audience](https://pyjwt.readthedocs.io/en/stable/usage.html)
 - [Apple App Review Guidelines](https://developer.apple.com/app-store/review/guidelines/)
 - [Google Play: betalningspolicy](https://support.google.com/googleplay/android-developer/answer/10281818?hl=en)
 

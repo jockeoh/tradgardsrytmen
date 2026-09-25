@@ -17,7 +17,8 @@ python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install -r requirements.txt
 python manage.py migrate
-python manage.py seed_demo
+python manage.py createsuperuser --username demo
+python manage.py seed_demo --owner demo
 python manage.py runserver 127.0.0.1:8000
 ```
 
@@ -25,7 +26,7 @@ Open [localhost:8000](http://127.0.0.1:8000). The fictional example garden conta
 
 Try switching between **Efter jobb** and **Efter plats**, opening a task, marking it complete, and editing a plant's location. **Årshjulet** shows the annual overview. **Min trädgård** provides plant search, category filters and area management; **Inställningar** holds the garden profile. **Inköpslista** includes a soil calculator and a shopping list saved on the current device.
 
-To start your own garden, skip `seed_demo`. You can add plants yourself, or run `seed_garden` for six starter plants. Demo tasks are interface examples, not seasonal gardening advice.
+Logga in med det uttryckligt skapade demokontot. Demo tasks are interface examples, not seasonal gardening advice. `seed_garden`, schemalagda jobb och underhållskommandon kräver numera ett uttryckligt `--garden UUID`.
 
 <details>
 <summary>Mobile task view</summary>
@@ -39,7 +40,7 @@ To start your own garden, skip `seed_demo`. You can add plants yourself, or run 
 - **Seasonal rules and task history are separate.** A care rule defines a window; a task occurrence records a particular season's work. Unique occurrence keys keep repeated materialization from creating duplicates, including across New Year.
 - **Work and location are separate.** A fixed set of work categories makes it possible to do a watering or inspection round across several areas. Moving a plant does not change the kind of work it needs.
 - **AI suggestions require review.** Saving a plant does not start research. A separate, disclosed action sends context to OpenAI and creates a versioned proposal with sources and uncertainties. Only selected, approved rules become active. Manual plants and tasks work without AI.
-- **The server owns garden data.** SQLite holds plants, plans, tasks and reminder history. The browser remembers the selected grouping and stores the device-local shopping list. The service worker caches the app shell; it does not provide offline editing or cache the garden API.
+- **The server owns garden data.** SQLite holds plants, plans, tasks and reminder history. Browser-only drafts/preferences are scoped by account and garden. The service worker caches only static assets, never authenticated HTML or the garden API.
 
 ## Tests
 
@@ -67,11 +68,11 @@ Tests cover seasonal windows, duplicate prevention, proposal approval and source
 
 ## Deployment and boundaries
 
-This is a shared garden application for a trusted household. **There is no application login or per-user access control.** Run it on localhost or behind an authenticated private network. The public repository is a code sample, not a publicly accessible installation.
+P2 adds Django login, garden memberships and garden-level authorization for both the old private API and `/api/v1/`. Auth0 EU is the chosen identity direction, with explicit account linking during the pilot, but the OIDC verifier stays disabled until issuer, audience and JWKS are explicitly configured. Keep the service private: tenant integration, legacy-data rehearsal, PostgreSQL/background jobs and launch operations remain unfinished.
 
 See [configuration and private deployment](docs/deployment.md) for optional AI, Web Push, backups and hosting. Environment variables are read from the process; `.env.example` is a reference and is not loaded automatically.
 
-The main limitations are the shared trust model, synchronous AI requests and the lack of offline editing. A public multi-user service would need authentication, garden-level authorization and a background research queue.
+The main limitations are the not-yet-configured Auth0/revocation integration, synchronous AI requests, SQLite and the lack of offline editing/background research queue.
 
 The sprout icon is from [Lucide](https://lucide.dev/); attribution is in [the icon licence](garden/static/garden/icons/LICENSE.txt).
 
@@ -84,5 +85,5 @@ The September 2026 redesign adds a botanical identity, responsive navigation, pl
 The proposed transition to an iPhone and Android product is documented in
 [product goals](docs/product-v1.md), [architecture](docs/architecture.md), and
 [implementation roadmap](docs/roadmap.md). These documents separate agreed
-direction from open decisions; they do not change the current private-only
-security model.
+direction from open decisions. P2 implements the local server foundation, but
+does not authorize public operation or a store launch.

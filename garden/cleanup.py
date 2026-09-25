@@ -8,17 +8,21 @@ from .tasks import archive_task
 
 
 @transaction.atomic
-def clean_existing_content(apply=False, queue=True):
-    report = {'date': str(timezone.localdate()), 'applied': apply, 'tasks_scanned': TaskOccurrence.objects.count(),
+def clean_existing_content(garden, apply=False, queue=True):
+    tasks_qs = TaskOccurrence.objects.filter(item__garden=garden)
+    items_qs = GardenItem.objects.filter(garden=garden)
+    rules_qs = CareRule.objects.filter(item__garden=garden)
+    works_qs = WorkIdentity.objects.filter(item__garden=garden)
+    report = {'date': str(timezone.localdate()), 'garden_id': str(garden.public_id), 'applied': apply, 'tasks_scanned': tasks_qs.count(),
               'expired': [], 'duplicates': [], 'review_items': [], 'queued_proposals': [], 'possible_overlaps': [],
-              'items_scanned': GardenItem.objects.count(), 'rules_scanned': CareRule.objects.count(), 'works_scanned': WorkIdentity.objects.count(),
-              'task_status_counts': {status: TaskOccurrence.objects.filter(status=status).count() for status in ['pending','completed','skipped','archived']},
-              'manual_tasks': TaskOccurrence.objects.filter(manual=True).count(),
-              'legacy_rules': list(CareRule.objects.filter(advice_kind='review').values_list('pk',flat=True))}
+              'items_scanned': items_qs.count(), 'rules_scanned': rules_qs.count(), 'works_scanned': works_qs.count(),
+              'task_status_counts': {status: tasks_qs.filter(status=status).count() for status in ['pending','completed','skipped','archived']},
+              'manual_tasks': tasks_qs.filter(manual=True).count(),
+              'legacy_rules': list(rules_qs.filter(advice_kind='review').values_list('pk',flat=True))}
     seen_pending = {}
     # Separate completed/skipped need requests are real history. Only concurrent
     # open snapshots can be automatic duplicates of one another.
-    tasks = list(TaskOccurrence.objects.filter(manual=False).select_related('rule', 'work').order_by('created_at', 'pk'))
+    tasks = list(tasks_qs.filter(manual=False).select_related('rule', 'work').order_by('created_at', 'pk'))
     tasks.sort(key=lambda t: (t.status == 'pending', t.pk))
     for task in tasks:
         if task.status == 'archived' or task.archive_reason:
@@ -35,7 +39,7 @@ def clean_existing_content(apply=False, queue=True):
                 archive_task(task, f'Entydig automatisk dubblett av tillfälle {seen_pending[signature]}')
         elif task.status == 'pending':
             seen_pending.setdefault(signature, task.pk)
-    rules = list(CareRule.objects.filter(active=True).select_related('work').order_by('pk'))
+    rules = list(rules_qs.filter(active=True).select_related('work').order_by('pk'))
     review_items = {r.item_id for r in rules if r.advice_kind == 'review'}
     for index, rule in enumerate(rules):
         for other in rules[index+1:]:
@@ -49,7 +53,7 @@ def clean_existing_content(apply=False, queue=True):
     report['review_items'] = sorted(review_items)
     if apply and queue:
         for item_id in sorted(review_items):
-            if ResearchProposal.objects.filter(item_id=item_id, status='pending').exists():
+            if ResearchProposal.objects.filter(item__garden=garden, item_id=item_id, status='pending').exists():
                 continue
             version = (CarePlanVersion.objects.filter(item_id=item_id).aggregate(v=Max('version'))['v'] or 0) + 1
             plan = CarePlanVersion.objects.create(item_id=item_id, version=version, source_type='cleanup',

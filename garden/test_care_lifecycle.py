@@ -10,12 +10,13 @@ from .tasks import materialize_rule, materialize_active_rules, needs_now, set_ex
 from .research import approve_proposal, ResearchError
 from .care_contract import plan_comparison, validate_rule, CareValidationError
 from .cleanup import clean_existing_content
+from .testing import TenantTestCase
 
 
 @patch('django.utils.timezone.localdate', return_value=date(2026, 9, 12))
-class CareLifecycleTests(TestCase):
+class CareLifecycleTests(TenantTestCase):
     def setUp(self):
-        self.item = GardenItem.objects.create(name='Hallon')
+        self.item = GardenItem.objects.create(garden=self.tenant_garden, name='Hallon')
         self.work = WorkIdentity.objects.create(item=self.item, action_key='gallra', scope='sommarhallon')
 
     def rule(self, **overrides):
@@ -66,7 +67,7 @@ class CareLifecycleTests(TestCase):
         approve_proposal(proposal, [rule.pk], token)
         count = TaskOccurrence.objects.count()
         approve_proposal(proposal, [rule.pk], token)
-        materialize_active_rules()
+        materialize_active_rules(self.tenant_garden)
         self.assertEqual(TaskOccurrence.objects.count(), count)
         proposal.plan.refresh_from_db()
         self.assertEqual(proposal.plan.effective_from, date(2026, 9, 12))
@@ -75,20 +76,20 @@ class CareLifecycleTests(TestCase):
     def test_on_demand_never_materializes_and_open_press_is_idempotent(self, _):
         rule = self.rule(advice_kind='on_demand', need_condition='Vid torr jord', cadence='monthly')
         self.assertEqual(materialize_rule(rule), [])
-        one, created = needs_now(self.work.pk)
-        two, repeated = needs_now(self.work.pk)
+        one, created = needs_now(self.tenant_garden, self.work.pk)
+        two, repeated = needs_now(self.tenant_garden, self.work.pk)
         self.assertTrue(created); self.assertFalse(repeated); self.assertEqual(one.pk, two.pk)
         one.status='completed'; one.save()
-        three, created = needs_now(self.work.pk)
+        three, created = needs_now(self.tenant_garden, self.work.pk)
         self.assertTrue(created); self.assertNotEqual(three.pk, one.pk)
 
     def test_cleanup_keeps_separate_completed_on_demand_requests(self, _):
         self.rule(advice_kind='on_demand', need_condition='Vid torr jord')
-        first, _ = needs_now(self.work.pk)
+        first, _ = needs_now(self.tenant_garden, self.work.pk)
         first.status = 'completed'; first.completed_at = timezone.now(); first.save()
-        second, created = needs_now(self.work.pk)
+        second, created = needs_now(self.tenant_garden, self.work.pk)
         self.assertTrue(created)
-        report = clean_existing_content(apply=True, queue=False)
+        report = clean_existing_content(self.tenant_garden, apply=True, queue=False)
         first.refresh_from_db(); second.refresh_from_db()
         self.assertEqual(report['duplicates'], [])
         self.assertEqual(first.status, 'completed')
@@ -98,12 +99,12 @@ class CareLifecycleTests(TestCase):
         rule = self.rule(advice_kind='general')
         self.assertEqual(materialize_rule(rule), [])
         rule.advice_kind='planned'; rule.save()
-        set_excluded(self.work.pk, True)
+        set_excluded(self.tenant_garden, self.work.pk, True)
         proposal, new = self.proposal(title='Nytt namn för gallring')
         with self.assertRaisesRegex(ResearchError, 'bortvalt'):
             self.approve(proposal, new)
-        self.assertEqual(materialize_active_rules(), 0)
-        set_excluded(self.work.pk, False)
+        self.assertEqual(materialize_active_rules(self.tenant_garden), 0)
+        set_excluded(self.tenant_garden, self.work.pk, False)
         self.approve(proposal, new)
         self.assertTrue(TaskOccurrence.objects.exists())
 
@@ -181,13 +182,13 @@ class CareLifecycleTests(TestCase):
         duplicate=TaskOccurrence.objects.create(**values,occurrence_key='dup',note='Egen anteckning')
         manual=TaskOccurrence.objects.create(**values,occurrence_key='manual',manual=True)
         expired=TaskOccurrence.objects.create(**dict(values,window_end=date(2026,9,5)),occurrence_key='expired',note='Spara mig')
-        report=clean_existing_content(apply=True)
+        report=clean_existing_content(self.tenant_garden, apply=True)
         duplicate.refresh_from_db();expired.refresh_from_db();done.refresh_from_db();manual.refresh_from_db()
         self.assertEqual(report['duplicates'],[{'id':duplicate.pk,'retained_id':retained.pk}])
         self.assertEqual((duplicate.status,duplicate.note),('archived','Egen anteckning'))
         self.assertEqual((expired.status,expired.note),('archived','Spara mig'))
         self.assertEqual((done.status,manual.status),('completed','pending'))
-        second=clean_existing_content(apply=True)
+        second=clean_existing_content(self.tenant_garden, apply=True)
         self.assertEqual(second['duplicates'],[]);self.assertEqual(second['expired'],[])
         self.assertEqual(ResearchProposal.objects.count(),1)
 
@@ -197,7 +198,7 @@ class CareLifecycleTests(TestCase):
         result=self.client.get('/api/month/?year=2026&month=9').json()
         self.assertEqual([t['id'] for t in result['planned']],[current.pk]);self.assertEqual(result['history'],[])
         self.assertEqual(self.client.get('/api/month/?month=13').status_code,400)
-        self.assertEqual(len(dashboard_for()['due']),1)
+        self.assertEqual(len(dashboard_for(self.tenant_garden)['due']),1)
 
     def test_manual_edit_and_approval_share_validation(self, _):
         proposal, rule=self.proposal()
@@ -211,9 +212,9 @@ class CareLifecycleTests(TestCase):
         rule=self.rule()
         materialize_rule(rule)
         ids=set(TaskOccurrence.objects.values_list('id',flat=True))
-        set_excluded(self.work.pk,True)
+        set_excluded(self.tenant_garden, self.work.pk, True)
         self.assertFalse(TaskOccurrence.objects.filter(status='pending').exists())
-        set_excluded(self.work.pk,False)
+        set_excluded(self.tenant_garden, self.work.pk, False)
         self.assertEqual(set(TaskOccurrence.objects.filter(status='pending').values_list('id',flat=True)),ids)
 
     def test_completed_alias_in_old_plan_requires_comparison(self, _):
@@ -231,12 +232,12 @@ class CareLifecycleTests(TestCase):
         from .models import PushSubscription, GardenSettings
         from .push import send_due_reminders
         from datetime import datetime
-        GardenSettings.objects.create(reminder_weekday=5,reminder_hour=9)
-        PushSubscription.objects.create(endpoint='https://example.com/subscription',task_reminders=True)
+        GardenSettings.objects.create(garden=self.tenant_garden, reminder_weekday=5,reminder_hour=9)
+        PushSubscription.objects.create(garden=self.tenant_garden, user=self.tenant_user, endpoint='https://example.com/subscription',task_reminders=True)
         self.rule(advice_kind='on_demand',need_condition='Torr jord')
-        materialize_active_rules()
+        materialize_active_rules(self.tenant_garden)
         with patch('garden.push._send') as send:
-            self.assertEqual(send_due_reminders(timezone.make_aware(datetime(2026,9,12,9))),0)
+            self.assertEqual(send_due_reminders(self.tenant_garden, timezone.make_aware(datetime(2026,9,12,9))),0)
             send.assert_not_called()
 
     def test_water_action_takes_priority_over_soil_condition(self, _):
@@ -246,13 +247,13 @@ class CareLifecycleTests(TestCase):
     def test_archive_rejects_reopen_and_completed_patch(self, _):
         rule=self.rule()
         task=materialize_rule(rule,through_year=2026)[0]
-        set_excluded(self.work.pk,True)
+        set_excluded(self.tenant_garden, self.work.pk, True)
         for status in ['pending','completed']:
             self.assertEqual(self.client.patch(f'/api/tasks/{task.pk}/',json.dumps({'status':status}),content_type='application/json').status_code,409)
 
     def test_work_selection_cannot_use_another_plant(self, _):
         proposal,rule=self.proposal()
-        elsewhere=GardenItem.objects.create(name='Annat träd')
+        elsewhere=GardenItem.objects.create(garden=self.tenant_garden, name='Annat träd')
         work=WorkIdentity.objects.create(item=elsewhere,action_key='gallra',scope='hela-växten')
         response=self.client.patch(f'/api/rules/{rule.pk}/',json.dumps({'work_id':work.pk}),content_type='application/json')
         self.assertEqual(response.status_code,400)
@@ -278,7 +279,7 @@ class CareLifecycleTests(TestCase):
             instructions=old.instructions,occurrence_key='legacy-completed',season_year=2026,occurrence_month=9,
             window_start=date(2026,8,1),window_end=date(2026,10,31),status='completed',note='Spara min anteckning')
         legacy.excluded_at=timezone.now();legacy.save()
-        report=clean_existing_content(apply=True)
+        report=clean_existing_content(self.tenant_garden, apply=True)
         proposal=ResearchProposal.objects.get(pk=report['queued_proposals'][0])
         proposed=proposal.plan.rules.get()
         response=self.client.patch(f'/api/rules/{proposed.pk}/',json.dumps({
@@ -297,7 +298,7 @@ class CareLifecycleTests(TestCase):
         self.assertFalse(TaskOccurrence.objects.filter(work=target,status='pending').exists())
         proposed.refresh_from_db();self.assertIsNone(proposed.identity_source_id)
         old.refresh_from_db();self.assertFalse(old.active)
-        set_excluded(target.pk,False)
+        set_excluded(self.tenant_garden, target.pk, False)
         self.assertEqual(TaskOccurrence.objects.filter(work=target,status='pending',season_year=2026).count(),0)
 
     def test_explicit_merge_into_existing_work_preserves_completed_slot(self, _):
@@ -331,7 +332,7 @@ class CareLifecycleTests(TestCase):
         other=self.rule(plan=proposal.plan,work=second_work,title='Bind upp skotten',active=False,start_month=4,end_month=5)
         notes={str(rule.pk):'Gallringen görs efter skörden på fruktade skott.',str(other.pk):'Uppbindningen görs på våren på nya skott.'}
         approve_proposal(proposal,[rule.pk,other.pk],plan_comparison(proposal.plan)['token'],notes)
-        report=clean_existing_content(apply=True)
+        report=clean_existing_content(self.tenant_garden, apply=True)
         self.assertEqual(report['queued_proposals'],[])
         self.assertEqual(self.item.proposals.count(),1)
 
@@ -340,12 +341,12 @@ class CareLifecycleTests(TestCase):
         old=self.rule(plan=old_plan)
         materialize_rule(old)
         original=set(TaskOccurrence.objects.values_list('pk',flat=True))
-        set_excluded(self.work.pk,True)
+        set_excluded(self.tenant_garden, self.work.pk, True)
         other_work=WorkIdentity.objects.create(item=self.item,action_key='vattna',scope='hela-växten')
         proposal,rule=self.proposal(work=other_work,title='Vattna vid behov',category='Vattna',advice_kind='on_demand',need_condition='När jorden är torr',instructions='Känn på jorden en bit under ytan. Vattna långsamt om den känns torr.')
         self.approve(proposal,rule)
         self.assertFalse(TaskOccurrence.objects.filter(work=self.work,status='pending').exists())
-        set_excluded(self.work.pk,False)
+        set_excluded(self.tenant_garden, self.work.pk, False)
         self.assertEqual(set(TaskOccurrence.objects.filter(work=self.work,status='pending').values_list('pk',flat=True)),original)
 
     def test_scope_spacing_and_case_reuse_existing_identity(self, _):
@@ -388,6 +389,7 @@ class LegacyCareMigrationTests(TransactionTestCase):
     def test_migration_preserves_historical_rows_and_marks_rules_for_review(self):
         from django.db.migrations.executor import MigrationExecutor
         executor=MigrationExecutor(connection)
+        all_latest=executor.loader.graph.leaf_nodes()
         previous=[('garden','0007_repair_work_categories_and_to_donts')]
         latest=[('garden','0010_workidentity_merged_into_and_more')]
         try:
@@ -397,13 +399,10 @@ class LegacyCareMigrationTests(TransactionTestCase):
             rule=old.get_model('garden','CareRule').objects.create(item=item,title='Gallra',active=True)
             task=old.get_model('garden','TaskOccurrence').objects.create(item=item,rule=rule,title='Gallra',occurrence_key='legacy-history',season_year=2025,occurrence_month=9,window_start=date(2025,9,1),window_end=date(2025,9,30),status='completed',note='Originalanteckning')
             executor=MigrationExecutor(connection);executor.migrate(latest)
-            migrated=TaskOccurrence.objects.get(pk=task.pk)
+            migrated_apps=executor.loader.project_state(latest).apps
+            migrated=migrated_apps.get_model('garden','TaskOccurrence').objects.get(pk=task.pk)
             self.assertEqual((migrated.note,migrated.status),('Originalanteckning','completed'))
             self.assertIsNotNone(migrated.work_id)
-            self.assertEqual(CareRule.objects.get(pk=rule.pk).advice_kind,'review')
-            self.assertEqual(materialize_active_rules(),0)
-            report=clean_existing_content(apply=True)
-            self.assertEqual(len(report['queued_proposals']),1)
-            self.assertEqual(ResearchProposal.objects.filter(item_id=item.pk,status='pending').count(),1)
+            self.assertEqual(migrated_apps.get_model('garden','CareRule').objects.get(pk=rule.pk).advice_kind,'review')
         finally:
-            MigrationExecutor(connection).migrate(latest)
+            MigrationExecutor(connection).migrate(all_latest)

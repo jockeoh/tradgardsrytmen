@@ -3,12 +3,15 @@ from datetime import date
 from django.db import IntegrityError, transaction
 from django.db.models import Q, F
 from django.http import HttpResponse, JsonResponse
-from django.shortcuts import get_object_or_404, render
+from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
 from django.views.decorators.http import require_GET, require_http_methods, require_POST
 from django.views.decorators.csrf import ensure_csrf_cookie
 from django.contrib.staticfiles import finders
-from .models import CarePlanVersion, CareRule, GardenArea, GardenItem, GardenSettings, PushSubscription, ResearchProposal, TaskOccurrence, WorkIdentity
+from django.contrib.auth.decorators import login_required
+from django.core.exceptions import ValidationError
+from .api_support import active_membership
+from .models import CarePlanVersion, CareRule, GardenArea, GardenItem, GardenMembership, GardenSettings, PushSubscription, ResearchProposal, TaskOccurrence, WorkIdentity
 from .research import ResearchError, approve_proposal, create_research_proposal
 from .tasks import dashboard_for, visible_pending, month_end, needs_now, set_excluded
 from .care_contract import validate_rule, CareValidationError, plan_comparison, canonical_scope
@@ -52,7 +55,7 @@ def _item_json(item, detail=False):
         "location": item.location, "location_detail": item.location, "notes": item.notes, "icon": item.icon,
     }
     if detail:
-        data["next_tasks"] = [_task_json(t) for t in visible_pending().filter(item=item)]
+        data["next_tasks"] = [_task_json(t) for t in visible_pending(item.garden).filter(item=item)]
         data["history"] = [_task_json(t) for t in item.tasks.exclude(status="pending").select_related("rule", "work").order_by("-updated_at")]
         data["advice"] = [_rule_json(r) for r in item.care_rules.filter(active=True, advice_kind__in=["on_demand", "general"], work__excluded_at__isnull=True).select_related("work")]
         data["excluded"] = [{"id": w.pk, "action_key": w.action_key, "scope": w.scope, "title": w.rules.order_by("-pk").first().title if w.rules.exists() else w.action_key} for w in item.works.filter(merged_into=None).exclude(excluded_at=None)]
@@ -90,13 +93,35 @@ def _plan_json(plan):
 
 @require_GET
 def health(request):
-    GardenSettings.load()
     return JsonResponse({"status": "ok", "service": "tradgardsrytmen", "time": timezone.now().isoformat()})
 
 
+@login_required
 @ensure_csrf_cookie
 def index(request):
-    return render(request, "garden/index.html", {"today": timezone.localdate(), "month_name": MONTHS[timezone.localdate().month - 1]})
+    membership = active_membership(request)
+    if membership is None:
+        return redirect("select-garden")
+    return render(request, "garden/index.html", {
+        "today": timezone.localdate(), "month_name": MONTHS[timezone.localdate().month - 1],
+        "account_id": request.user.public_id, "garden_id": membership.garden.public_id,
+    })
+
+
+@login_required
+@require_http_methods(["GET", "POST"])
+def select_garden(request):
+    memberships = GardenMembership.objects.filter(user=request.user).select_related("garden").order_by("garden__name", "garden_id")
+    if request.method == "POST":
+        try:
+            membership = memberships.filter(garden__public_id=request.POST.get("garden_id")).first()
+        except (ValidationError, ValueError, TypeError):
+            membership = None
+        if membership is None:
+            return render(request, "garden/select_garden.html", {"memberships": memberships, "error": "Trädgården finns inte längre."}, status=404)
+        request.session["active_garden_id"] = str(membership.garden.public_id)
+        return redirect("index")
+    return render(request, "garden/select_garden.html", {"memberships": memberships})
 
 
 @require_GET
@@ -110,21 +135,21 @@ def service_worker(request):
 @require_GET
 def api_bootstrap(request):
     day = timezone.localdate()
-    board = dashboard_for(day)
+    board = dashboard_for(request.garden, day)
     completed = board.pop("completed")
     task_groups = {key: [_task_json(t) for t in value] for key, value in board.items()}
     total = completed + sum(len(v) for v in task_groups.values())
-    settings = GardenSettings.load()
+    settings = GardenSettings.load(request.garden)
     return JsonResponse({
         "today": day.isoformat(), "month_name": MONTHS[day.month - 1], "completed": completed,
         "total": total, "progress": round(completed * 100 / total) if total else 0,
-        "tasks": task_groups, "items": [_item_json(i) for i in GardenItem.objects.filter(active=True).select_related("area")],
-        "areas": [{"id": area.pk, "name": area.name, "item_count": area.items.filter(active=True).count()} for area in GardenArea.objects.all()],
+        "tasks": task_groups, "items": [_item_json(i) for i in GardenItem.objects.filter(garden=request.garden, active=True).select_related("area")],
+        "areas": [{"id": area.pk, "name": area.name, "item_count": area.items.filter(garden=request.garden, active=True).count()} for area in GardenArea.objects.filter(garden=request.garden)],
         "work_categories": list(WORK_CATEGORIES),
-        "advice": [_rule_json(r) for r in CareRule.objects.filter(active=True, item__active=True, advice_kind="on_demand", work__excluded_at__isnull=True).select_related("work", "item")],
+        "advice": [_rule_json(r) for r in CareRule.objects.filter(item__garden=request.garden, active=True, item__active=True, advice_kind="on_demand", work__excluded_at__isnull=True).select_related("work", "item")],
         "settings": {"garden_name": settings.garden_name, "city": settings.city, "cultivation_zone": settings.cultivation_zone, "exposure": settings.exposure},
-        "pending_proposals": ResearchProposal.objects.filter(status="pending").count(),
-        "year": [{"month": m, "name": MONTHS[m-1], "open": visible_pending().filter( window_start__lte=month_end(day.year, m), window_end__gte=date(day.year, m, 1)).count()} for m in range(1, 13)],
+        "pending_proposals": ResearchProposal.objects.filter(item__garden=request.garden, status="pending").count(),
+        "year": [{"month": m, "name": MONTHS[m-1], "open": visible_pending(request.garden).filter(window_start__lte=month_end(day.year, m), window_end__gte=date(day.year, m, 1)).count()} for m in range(1, 13)],
     })
 
 
@@ -134,14 +159,14 @@ def api_search(request):
     if len(query) < 2:
         return JsonResponse({"results": []})
     normalized = "Flammentanz" if query.casefold() == "flammantz" else query
-    item_hits = GardenItem.objects.filter(Q(name__icontains=normalized) | Q(canonical_name__icontains=normalized) | Q(category__icontains=normalized) | Q(cultivar__icontains=normalized) | Q(notes__icontains=normalized))[:8]
+    item_hits = GardenItem.objects.filter(Q(name__icontains=normalized) | Q(canonical_name__icontains=normalized) | Q(category__icontains=normalized) | Q(cultivar__icontains=normalized) | Q(notes__icontains=normalized), garden=request.garden)[:8]
     results = [{"type": "item", "id": i.pk, "title": i.name, "subtitle": " · ".join(x for x in [i.category, i.cultivar] if x)} for i in item_hits]
-    for item in GardenItem.objects.filter(active=True):
+    for item in GardenItem.objects.filter(garden=request.garden, active=True):
         if any(normalized.casefold() in str(alias).casefold() for alias in item.aliases) and not any(r["id"] == item.pk for r in results):
             results.append({"type": "item", "id": item.pk, "title": item.name, "subtitle": "Alias"})
-    tasks = TaskOccurrence.objects.filter(Q(title__icontains=normalized) | Q(instructions__icontains=normalized)).select_related("item")[:8]
+    tasks = TaskOccurrence.objects.filter(Q(title__icontains=normalized) | Q(instructions__icontains=normalized), item__garden=request.garden).select_related("item")[:8]
     results.extend({"type": "task", "id": t.pk, "title": t.title, "subtitle": t.item.name} for t in tasks)
-    plans = CarePlanVersion.objects.filter(Q(summary__icontains=normalized) | Q(item__name__icontains=normalized)).select_related("item")[:5]
+    plans = CarePlanVersion.objects.filter(Q(summary__icontains=normalized) | Q(item__name__icontains=normalized), item__garden=request.garden).select_related("item")[:5]
     results.extend({"type": "care", "id": p.item_id, "title": f"Skötselråd: {p.item.name}", "subtitle": p.summary[:90]} for p in plans)
     return JsonResponse({"results": results[:15]})
 
@@ -149,15 +174,21 @@ def api_search(request):
 @require_http_methods(["GET", "POST"])
 def api_items(request):
     if request.method == "GET":
-        return JsonResponse({"items": [_item_json(i) for i in GardenItem.objects.filter(active=True)]})
+        return JsonResponse({"items": [_item_json(i) for i in GardenItem.objects.filter(garden=request.garden, active=True)]})
     data = _json_body(request)
     if data is None or not data.get("name"):
         return JsonResponse({"error": "Namn krävs."}, status=400)
+    try:
+        area = GardenArea.objects.filter(garden=request.garden, pk=data.get("area_id")).first() if data.get("area_id") else None
+    except (ValueError, TypeError):
+        area = None
+    if data.get("area_id") and area is None:
+        return JsonResponse({"error": "Området finns inte."}, status=400)
     item = GardenItem.objects.create(
-        name=data["name"].strip(), canonical_name=data.get("canonical_name", ""), aliases=data.get("aliases", []),
+        garden=request.garden, name=data["name"].strip(), canonical_name=data.get("canonical_name", ""), aliases=data.get("aliases", []),
         category=data.get("category", ""), kind=data.get("kind", "individual"), cultivar=data.get("cultivar", ""),
         quantity=max(1, int(data.get("quantity", 1))), age_stage=data.get("age_stage", ""),
-        area=GardenArea.objects.filter(pk=data.get("area_id")).first() if data.get("area_id") else None,
+        area=area,
         location=data.get("location_detail", data.get("location", "")), notes=data.get("notes", ""),
     )
     response = {"item": _item_json(item)}
@@ -166,29 +197,34 @@ def api_items(request):
 
 @require_http_methods(["GET", "PATCH"])
 def api_item(request, item_id):
-    item = get_object_or_404(GardenItem, pk=item_id, active=True)
+    item = get_object_or_404(GardenItem, garden=request.garden, pk=item_id, active=True)
     if request.method == "GET":
         return JsonResponse({"item": _item_json(item, True), "proposals": [_plan_json(p.plan) for p in item.proposals.filter(status="pending").order_by("-plan__version")]})
     data = _json_body(request) or {}
     if "area_id" in data:
         area_id = data.get("area_id")
-        if area_id and not GardenArea.objects.filter(pk=area_id).exists():
+        try:
+            area = GardenArea.objects.filter(garden=request.garden, pk=area_id).first() if area_id else None
+        except (ValueError, TypeError):
+            area = None
+        if area_id and area is None:
             return JsonResponse({"error": "Området finns inte."}, status=400)
-        item.area_id = area_id or None
+        item.area = area
     if "location_detail" in data:
         data["location"] = data["location_detail"]
     for field in ["name", "canonical_name", "aliases", "category", "kind", "cultivar", "quantity", "age_stage", "location", "notes"]:
         if field in data:
             setattr(item, field, data[field])
+    item.version += 1
     item.save()
     return JsonResponse({"item": _item_json(item, True)})
 
 
 @require_POST
 def api_research(request, item_id):
-    item = get_object_or_404(GardenItem, pk=item_id, active=True)
+    item = get_object_or_404(GardenItem, garden=request.garden, pk=item_id, active=True)
     try:
-        proposal = create_research_proposal(item, GardenSettings.load())
+        proposal = create_research_proposal(item, GardenSettings.load(request.garden))
     except ResearchError as exc:
         return JsonResponse({"error": str(exc)}, status=503)
     return JsonResponse({"proposal": _plan_json(proposal.plan)}, status=201)
@@ -196,7 +232,7 @@ def api_research(request, item_id):
 
 @require_http_methods(["GET", "DELETE"])
 def api_proposal(request, proposal_id):
-    proposal = get_object_or_404(ResearchProposal, pk=proposal_id)
+    proposal = get_object_or_404(ResearchProposal, item__garden=request.garden, pk=proposal_id)
     if request.method == "GET":
         return JsonResponse({"proposal": _plan_json(proposal.plan)})
     proposal.status = "rejected"
@@ -209,7 +245,7 @@ def api_proposal(request, proposal_id):
 
 @require_POST
 def api_approve_proposal(request, proposal_id):
-    proposal = get_object_or_404(ResearchProposal, pk=proposal_id)
+    proposal = get_object_or_404(ResearchProposal, item__garden=request.garden, pk=proposal_id)
     data = _json_body(request) or {}
     try:
         selected = approve_proposal(proposal, [int(v) for v in data.get("rule_ids", [])], data.get("comparison_token"), data.get("resolutions"))
@@ -222,7 +258,7 @@ def api_approve_proposal(request, proposal_id):
 def api_tasks(request):
     data = _json_body(request) or {}
     try:
-        item = GardenItem.objects.get(pk=data.get("item_id"), active=True)
+        item = GardenItem.objects.get(garden=request.garden, pk=data.get("item_id"), active=True)
         start = date.fromisoformat(data["window_start"])
         end = date.fromisoformat(data.get("window_end") or data["window_start"])
     except (GardenItem.DoesNotExist, KeyError, ValueError):
@@ -244,7 +280,7 @@ def api_tasks(request):
 @require_http_methods(["GET", "PATCH"])
 @transaction.atomic
 def api_task(request, task_id):
-    task = get_object_or_404(TaskOccurrence.objects.select_related("item", "item__area", "rule"), pk=task_id)
+    task = get_object_or_404(TaskOccurrence.objects.select_related("item", "item__area", "rule"), item__garden=request.garden, pk=task_id)
     if request.method == "GET":
         return JsonResponse({"task": _task_json(task)})
     GardenItem.objects.filter(pk=task.item_id).update(active=F("active"))
@@ -268,6 +304,7 @@ def api_task(request, task_id):
         if data["category"] not in WORK_CATEGORIES:
             return JsonResponse({"error": "Välj en giltig arbetskategori."}, status=400)
         task.category = data["category"]
+    task.version += 1
     task.save()
     return JsonResponse({"task": _task_json(task)})
 
@@ -275,7 +312,7 @@ def api_task(request, task_id):
 @require_http_methods(["PATCH"])
 @transaction.atomic
 def api_rule(request, rule_id):
-    rule = get_object_or_404(CareRule, pk=rule_id, plan__status="pending")
+    rule = get_object_or_404(CareRule, item__garden=request.garden, pk=rule_id, plan__status="pending")
     data = _json_body(request) or {}
     try:
         with transaction.atomic():
@@ -293,7 +330,7 @@ def api_rule(request, rule_id):
                 raise CareValidationError("Välj hur arbetsidentiteten ska hanteras.")
             chosen = None
             if mode != "new":
-                chosen = WorkIdentity.objects.filter(pk=data.get("work_id", rule.work_id), item=rule.item, merged_into=None).first()
+                chosen = WorkIdentity.objects.filter(pk=data.get("work_id", rule.work_id), item=rule.item, item__garden=request.garden, merged_into=None).first()
                 if not chosen:
                     raise CareValidationError("Välj ett aktivt arbete på samma växt.")
             if mode == "existing":
@@ -341,7 +378,7 @@ def api_rule(request, rule_id):
 
 @require_GET
 def api_proposals(request):
-    return JsonResponse({"proposals": [{"item": {"id": p.item_id, "name": p.item.name}, "plan": _plan_json(p.plan)} for p in ResearchProposal.objects.filter(status="pending").select_related("item", "plan")]})
+    return JsonResponse({"proposals": [{"item": {"id": p.item_id, "name": p.item.name}, "plan": _plan_json(p.plan)} for p in ResearchProposal.objects.filter(item__garden=request.garden, status="pending").select_related("item", "plan")]})
 
 
 @require_GET
@@ -352,7 +389,7 @@ def api_month(request):
         first, last = date(year, month, 1), month_end(year, month)
     except (ValueError, TypeError):
         return JsonResponse({"error": "Välj ett giltigt år och en månad."}, status=400)
-    tasks = TaskOccurrence.objects.filter(item__active=True).select_related("item", "item__area", "rule", "work")
+    tasks = TaskOccurrence.objects.filter(item__garden=request.garden, item__active=True).select_related("item", "item__area", "rule", "work")
     return JsonResponse({"year": year, "month": month,
         "counts": [{"month": m, "open": tasks.filter(status="pending", archive_reason="", work__excluded_at__isnull=True, window_start__lte=month_end(year,m), window_end__gte=date(year,m,1)).count()} for m in range(1,13)],
         "planned": [_task_json(t) for t in tasks.filter(status="pending", archive_reason="", work__excluded_at__isnull=True, window_start__lte=last, window_end__gte=first)],
@@ -361,9 +398,9 @@ def api_month(request):
 
 @require_POST
 def api_need(request, work_id):
-    get_object_or_404(WorkIdentity, pk=work_id, merged_into=None)
+    get_object_or_404(WorkIdentity, item__garden=request.garden, pk=work_id, merged_into=None)
     try:
-        task, created = needs_now(work_id)
+        task, created = needs_now(request.garden, work_id)
     except CareValidationError as exc:
         return JsonResponse({"error": str(exc)}, status=409)
     return JsonResponse({"task": _task_json(task), "created": created}, status=201 if created else 200)
@@ -371,26 +408,26 @@ def api_need(request, work_id):
 
 @require_http_methods(["PATCH"])
 def api_work(request, work_id):
-    get_object_or_404(WorkIdentity, pk=work_id, merged_into=None)
+    get_object_or_404(WorkIdentity, item__garden=request.garden, pk=work_id, merged_into=None)
     data = _json_body(request) or {}
     if type(data.get("excluded")) is not bool:
         return JsonResponse({"error": "Ange om arbetet ska vara bortvalt."}, status=400)
-    work = set_excluded(work_id, data["excluded"])
+    work = set_excluded(request.garden, work_id, data["excluded"])
     return JsonResponse({"ok": True, "excluded": bool(work.excluded_at)})
 
 
 @require_http_methods(["GET", "POST"])
 def api_areas(request):
     if request.method == "GET":
-        return JsonResponse({"areas": [{"id": area.pk, "name": area.name, "item_count": area.items.filter(active=True).count()} for area in GardenArea.objects.all()]})
+        return JsonResponse({"areas": [{"id": area.pk, "name": area.name, "item_count": area.items.filter(garden=request.garden, active=True).count()} for area in GardenArea.objects.filter(garden=request.garden)]})
     data = _json_body(request) or {}
     name = str(data.get("name", "")).strip()
     if not name:
         return JsonResponse({"error": "Områdesnamn krävs."}, status=400)
-    if GardenArea.objects.filter(name__iexact=name).exists():
+    if GardenArea.objects.filter(garden=request.garden, name__iexact=name).exists():
         return JsonResponse({"error": "Området finns redan."}, status=400)
     try:
-        area = GardenArea.objects.create(name=name)
+        area = GardenArea.objects.create(garden=request.garden, name=name)
     except IntegrityError:
         return JsonResponse({"error": "Området finns redan."}, status=400)
     return JsonResponse({"area": {"id": area.pk, "name": area.name, "item_count": 0}}, status=201)
@@ -398,7 +435,7 @@ def api_areas(request):
 
 @require_http_methods(["PATCH", "DELETE"])
 def api_area(request, area_id):
-    area = get_object_or_404(GardenArea, pk=area_id)
+    area = get_object_or_404(GardenArea, garden=request.garden, pk=area_id)
     if request.method == "DELETE":
         area.delete()
         return JsonResponse({"ok": True})
@@ -406,7 +443,7 @@ def api_area(request, area_id):
     name = str(data.get("name", "")).strip()
     if not name:
         return JsonResponse({"error": "Områdesnamn krävs."}, status=400)
-    if GardenArea.objects.filter(name__iexact=name).exclude(pk=area.pk).exists():
+    if GardenArea.objects.filter(garden=request.garden, name__iexact=name).exclude(pk=area.pk).exists():
         return JsonResponse({"error": "Området finns redan."}, status=400)
     area.name = name
     area.save(update_fields=["name", "updated_at"])
@@ -415,7 +452,7 @@ def api_area(request, area_id):
 
 @require_http_methods(["GET", "PATCH"])
 def api_settings(request):
-    settings = GardenSettings.load()
+    settings = GardenSettings.load(request.garden)
     if request.method == "PATCH":
         data = _json_body(request) or {}
         for field in ["garden_name", "city", "cultivation_zone", "exposure", "monthly_digest_day", "reminder_weekday", "reminder_hour"]:
@@ -438,11 +475,15 @@ def api_push_subscription(request):
     if not endpoint:
         return JsonResponse({"error": "Prenumerationen saknar endpoint."}, status=400)
     if request.method == "DELETE":
-        PushSubscription.objects.filter(endpoint=endpoint).update(active=False)
+        PushSubscription.objects.filter(garden=request.garden, user=request.user, endpoint=endpoint).update(active=False)
         return JsonResponse({"ok": True})
     raw = data.get("subscription") or data
     keys = raw.get("keys") or {}
-    sub, _ = PushSubscription.objects.update_or_create(endpoint=endpoint, defaults={
+    existing = PushSubscription.objects.filter(endpoint=endpoint).first()
+    if existing and (existing.garden_id != request.garden.pk or existing.user_id != request.user.pk):
+        return JsonResponse({"error": "Prenumerationen finns inte."}, status=404)
+    sub, _ = PushSubscription.objects.update_or_create(garden=request.garden, user=request.user, endpoint=endpoint, defaults={
+        "garden": request.garden, "user": request.user,
         "p256dh": keys.get("p256dh", ""), "auth": keys.get("auth", ""), "device_name": data.get("device_name", "iPhone/PWA"),
         "monthly_digest": bool(data.get("monthly_digest", False)), "task_reminders": bool(data.get("task_reminders", False)), "active": True,
     })
@@ -452,5 +493,5 @@ def api_push_subscription(request):
 @require_POST
 def api_push_test(request):
     from .push import send_test_push
-    sent = send_test_push()
+    sent = send_test_push(request.garden, request.user)
     return JsonResponse({"ok": True, "sent": sent})

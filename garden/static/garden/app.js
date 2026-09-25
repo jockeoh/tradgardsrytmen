@@ -8,14 +8,19 @@ function savePreference(key, value) {
   catch { return false; }
 }
 
+const accountStorageScope = `${document.body?.dataset.accountId || "anonymous"}:${document.body?.dataset.gardenId || "none"}`;
+
 function savedGrouping() {
-  try { return window.localStorage.getItem("garden-task-view"); }
+  try { return window.localStorage.getItem(`garden-task-view:${accountStorageScope}`); }
   catch { return "work"; }
 }
 
 const savedTaskView = savedGrouping();
 const viewNames = {month: "Överblick", plants: "Min trädgård", year: "Årshjulet", shopping: "Inköpslista", settings: "Inställningar"};
-const storedShopping = readPreference("garden-shopping-v1", []);
+const shoppingStorageKey = `garden-shopping-v2:${accountStorageScope}`;
+// Never claim the pre-account, device-wide v1 list for the first account that
+// happens to log in. It remains untouched for an explicit migration decision.
+const storedShopping = readPreference(shoppingStorageKey, []);
 const state = {
   data: null, view: Object.hasOwn(viewNames, location.hash.slice(1)) ? location.hash.slice(1) : "month",
   taskView: ["work", "area"].includes(savedTaskView) ? savedTaskView : "work", taskPeriod: "current",
@@ -55,7 +60,12 @@ async function api(url, options = {}) {
   if (options.method && options.method !== "GET") headers["X-CSRFToken"] = csrfToken();
   const response = await fetch(url, {...options, headers});
   const data = await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(data.error || "Något gick fel.");
+  if (response.status === 401) {
+    try { window.sessionStorage.setItem(`garden-return:${accountStorageScope}`, location.href); } catch {}
+    location.assign(`/accounts/login/?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`);
+    throw new Error("Logga in för att fortsätta.");
+  }
+  if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : data.error?.message || "Något gick fel.");
   return data;
 }
 
@@ -353,12 +363,31 @@ async function openTask(id) {
 function openForm(title, body, submitLabel, onSubmit) {
   const dialog = $("#form-dialog"), form = $("#dynamic-form");
   $("#form-content").innerHTML = `<h2 id="form-title">${title}</h2><div class="form-stack">${body}<div class="form-actions"><button class="button secondary" type="button" data-close>Avbryt</button><button class="button" type="submit">${submitLabel}</button></div></div>`;
+  const draftKey = `garden-form-draft:${accountStorageScope}:${title}`;
+  form.dataset.draftKey = draftKey;
+  const draft = readPreference(draftKey, {});
+  for (const field of form.elements) {
+    if (!field.name || !Object.hasOwn(draft, field.name)) continue;
+    if (field.type === "checkbox") field.checked = draft[field.name] === true;
+    else field.value = String(draft[field.name]);
+  }
+  const saveDraft = () => {
+    const values = {};
+    for (const field of form.elements) if (field.name) values[field.name] = field.type === "checkbox" ? field.checked : field.value;
+    savePreference(draftKey, values);
+  };
+  form.oninput = saveDraft;
+  form.onchange = saveDraft;
   form.onsubmit = async event => {
     event.preventDefault();
     const button = form.querySelector("[type=submit]");
     form.querySelector('.form-error')?.remove();
     button.disabled = true; button.textContent = "Sparar …";
-    try { await onSubmit(new FormData(form)); dialog.close(); await load(); }
+    try {
+      await onSubmit(new FormData(form));
+      try { window.localStorage.removeItem(draftKey); } catch {}
+      dialog.close(); await load();
+    }
     catch (error) {
       const message = document.createElement('p');
       message.tabIndex = -1; message.className = 'form-error'; message.setAttribute('role', 'alert'); message.textContent = error.message;
@@ -586,7 +615,7 @@ function renderShopping() {
 function changeShopping(update) {
   const previous = state.shopping;
   const next = update(previous);
-  if (!savePreference('garden-shopping-v1', next)) {
+  if (!savePreference(shoppingStorageKey, next)) {
     toast('Listan kunde inte sparas. Tillåt lagring i webbläsaren och försök igen.');
     renderShopping();
     return false;
@@ -623,7 +652,7 @@ document.addEventListener("click", async event => {
   const need=event.target.closest('[data-need]'); if(need){need.disabled=true;try{const result=await api(`/api/works/${need.dataset.need}/need/`,{method:'POST',body:'{}'});await load();await refreshOpenDetail();toast(result.created?'Arbetet är tillagt':'Arbetet är redan öppet');if(!need.isConnected) document.querySelector(`dialog[open] [data-need="${need.dataset.need}"]`)?.focus({preventScroll:true});}finally{need.disabled=false;}return;}
   const exclusion=event.target.closest('[data-exclude], [data-restore]'); if(exclusion){const id=exclusion.dataset.exclude || exclusion.dataset.restore; await api(`/api/works/${id}/`,{method:'PATCH',body:JSON.stringify({excluded:!!exclusion.dataset.exclude})});$('#detail-dialog').close();await load();toast(exclusion.dataset.exclude?'Arbetet är bortvalt tills du återställer det under växten.':'Bortvalet är återställt');return;}
 
-  const taskView=event.target.closest("[data-task-view]"); if(taskView){state.taskView=taskView.dataset.taskView;try {window.localStorage.setItem("garden-task-view",state.taskView);} catch {} renderTasks(state.data.tasks);return;}
+  const taskView=event.target.closest("[data-task-view]"); if(taskView){state.taskView=taskView.dataset.taskView;try {window.localStorage.setItem(`garden-task-view:${accountStorageScope}`,state.taskView);} catch {} renderTasks(state.data.tasks);return;}
   const nav=event.target.closest("[data-view]"); if(nav){setView(nav.dataset.view);return;}
   const status=event.target.closest("[data-status]"); if(status){const taskRow=status.closest("[data-task]"); status.disabled=true;try {await updateTask(Number(taskRow.dataset.task),status.dataset.status);} finally {status.disabled=false;} return;}
   const skip=event.target.closest("[data-skip-task]"); if(skip){if(window.confirm("Hoppa över uppgiften den här gången? Du kan ångra direkt efteråt.")){ await updateTask(Number(skip.dataset.skipTask),"skipped"); } return;}
@@ -637,7 +666,11 @@ document.addEventListener("click", async event => {
   const reject=event.target.closest("[data-reject]"); if(reject){await api(`/api/proposals/${reject.dataset.reject}/`,{method:"DELETE"});toast("Förslaget avvisades");$("#detail-dialog").close();await load();return;}
   const renameArea=event.target.closest("[data-rename-area]"); if(renameArea){const name=window.prompt("Nytt namn på området",renameArea.dataset.areaName);if(name?.trim()){await api(`/api/areas/${renameArea.dataset.renameArea}/`,{method:"PATCH",body:JSON.stringify({name:name.trim()})});toast("Området har bytt namn");await load();}return;}
   const deleteArea=event.target.closest("[data-delete-area]"); if(deleteArea){if(window.confirm(`Ta bort området ${deleteArea.dataset.areaName}? Växterna blir inte placerade men deras platsdetaljer sparas.`)){await api(`/api/areas/${deleteArea.dataset.deleteArea}/`,{method:"DELETE"});toast("Området togs bort");await load();}return;}
-  if(event.target.closest("[data-close]")) $("#form-dialog").close();
+  if(event.target.closest("[data-close]")) {
+    const form = $("#dynamic-form");
+    try { if (form.dataset.draftKey) window.localStorage.removeItem(form.dataset.draftKey); } catch {}
+    $("#form-dialog").close();
+  }
   if(event.target.closest("[data-close-detail]")) $("#detail-dialog").close();
   } catch(error) {toast(error.message);}
 });

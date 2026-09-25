@@ -1,6 +1,8 @@
 # Trädgårdsrytmen: produktmål för första mobilversionen
 
-Status: första arbetsunderlag, 2026-09-25. Beslut och förslag skiljs nedan.
+Status: produktmål med lokalt implementerad P2-servergrund, 2026-09-25.
+Mobilklienten och den beslutade Auth0 EU-identitetsleverantören är fortfarande
+inte aktiverade.
 Läs tillsammans med [arkitekturen](architecture.md) och [arbetsplanen](roadmap.md).
 
 ## Överenskommen riktning
@@ -28,6 +30,11 @@ Flödet ska fungera mot samma server från iPhone och Android. Två oberoende
 konton ska ha separata trädgårdar. En användare får inte läsa eller ändra
 en annan trädgård genom att ändra identifierare i ett anrop.
 Manuella uppgifter gör denna milstolpe oberoende av AI och köp.
+
+P2 verifierar nu serverdelen av flödet lokalt via `/api/v1/`: två konton,
+separata trädgårdar, växt, manuell uppgift, klarmarkering, versionskonflikt,
+återförsök och bevarad historik. Det är inte samma sak som I1: fysisk iPhone,
+Android och faktisk konfiguration/prov av vald Auth0 EU-tenant återstår.
 
 ## Föreslagen omfattning för en första butikslansering
 

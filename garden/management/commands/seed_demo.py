@@ -1,10 +1,11 @@
 """Create fictional, date-relative data for a local walkthrough."""
 from django.apps import apps
+from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 from django.db import transaction
 from django.utils import timezone
 
-from garden.models import GardenArea, GardenItem, GardenSettings, TaskOccurrence
+from garden.models import Garden, GardenArea, GardenItem, GardenMembership, GardenSettings, TaskOccurrence
 from garden.tasks import add_months, month_end
 
 
@@ -16,11 +17,18 @@ class Command(BaseCommand):
         if any(model.objects.exists() for model in apps.get_app_config("garden").get_models()):
             raise CommandError("Databasen innehåller redan trädgårdsdata. Välj en ny TRADGARDSRYTMEN_DB_PATH och kör migrate först.")
 
+        try:
+            owner = get_user_model().objects.get(username=options["owner"])
+        except get_user_model().DoesNotExist as exc:
+            raise CommandError("Ägarkontot finns inte. Skapa det uttryckligen före seed_demo.") from exc
+
         today = timezone.localdate()
         first = today.replace(day=1)
         last = month_end(today.year, today.month)
-        GardenSettings.objects.create(garden_name="Exempelträdgården", city="Kalmar", cultivation_zone="1", exposure="Sol och halvskugga")
-        areas = [GardenArea.objects.create(name=name, sort_order=index) for index, name in enumerate(("Fruktlunden", "Köksträdgården", "Vid uteplatsen"))]
+        garden = Garden.objects.create(name="Exempelträdgården")
+        GardenMembership.objects.create(garden=garden, user=owner, role=GardenMembership.Role.OWNER)
+        GardenSettings.objects.create(garden=garden, garden_name="Exempelträdgården", city="Kalmar", cultivation_zone="1", exposure="Sol och halvskugga")
+        areas = [GardenArea.objects.create(garden=garden, name=name, sort_order=index) for index, name in enumerate(("Fruktlunden", "Köksträdgården", "Vid uteplatsen"))]
         plants = []
         for name, category, icon, area, location in (
             ("Äppelträd", "Fruktträd", "apple", 0, "Vid grusgången"),
@@ -30,7 +38,7 @@ class Command(BaseCommand):
             ("Klätterros", "Rosor", "rose", 2, "Vid pergolan"),
             ("Bokhäck", "Häck", "hedge", 2, "Längs gången"),
         ):
-            plants.append(GardenItem.objects.create(name=name, canonical_name=name, category=category, icon=icon, area=areas[area], location=location, notes="Fiktiv växt för att prova appen. Uppgifterna är exempel, inte en skötselplan."))
+            plants.append(GardenItem.objects.create(garden=garden, name=name, canonical_name=name, category=category, icon=icon, area=areas[area], location=location, notes="Fiktiv växt för att prova appen. Uppgifterna är exempel, inte en skötselplan."))
 
         examples = (
             (3, "Känn efter om jorden är torr", "Kontrollera", "Känn på jorden och anteckna hur den verkar innan du bestämmer nästa steg."),
@@ -59,3 +67,5 @@ class Command(BaseCommand):
                 window_start=start, window_end=month_end(start.year, start.month), manual=True,
             )
         self.stdout.write(self.style.SUCCESS("Exempelträdgården är klar: 6 växter, 3 områden och 11 exempeluppgifter."))
+    def add_arguments(self, parser):
+        parser.add_argument("--owner", required=True, help="Befintligt användarnamn som uttryckligen ska äga demot.")

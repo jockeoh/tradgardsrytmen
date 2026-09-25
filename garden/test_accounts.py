@@ -42,10 +42,15 @@ class AccountFoundationTests(TestCase):
             with self.assertRaises(ProtectedError):
                 parent.delete()
 
-    def test_no_new_public_routes_or_sessions(self):
-        for path in ["/api/v1/me/", "/api/v1/gardens/", "/accounts/login/"]:
-            self.assertEqual(self.client.get(path).status_code, 404)
-        self.assertNotIn("django_session", connection.introspection.table_names())
+    def test_authentication_is_required_for_web_and_api(self):
+        self.assertEqual(self.client.get("/api/v1/me/").status_code, 401)
+        self.assertEqual(self.client.get("/api/v1/gardens/").status_code, 401)
+        self.assertEqual(self.client.get("/accounts/login/").status_code, 200)
+        self.assertIn("django_session", connection.introspection.table_names())
+        self.assertEqual(self.client.get("/").status_code, 302)
+        self.assertEqual(self.client.get("/api/bootstrap/").status_code, 401)
+        GardenMembership.objects.create(user=self.user, garden=self.garden, role="owner")
+        self.client.force_login(self.user)
         self.assertEqual(self.client.get("/").status_code, 200)
         self.assertEqual(self.client.get("/api/bootstrap/").status_code, 200)
 
@@ -79,11 +84,49 @@ class FoundationMigrationTests(TransactionTestCase):
             executor.migrate(latest)
             current = executor.loader.project_state(latest).apps
             for name, rows in before.items():
-                self.assertEqual(list(current.get_model("garden", name).objects.order_by("pk").values()), rows, name)
+                fields = list(rows[0]) if rows else []
+                self.assertEqual(list(current.get_model("garden", name).objects.order_by("pk").values(*fields)), rows, name)
             for app, name in [("accounts", "User"), ("garden", "Garden"), ("garden", "GardenMembership")]:
                 self.assertEqual(current.get_model(app, name).objects.count(), 0)
+            self.assertFalse(current.get_model("garden", "GardenItem").objects.filter(garden__isnull=False).exists())
+            self.assertFalse(current.get_model("garden", "GardenArea").objects.filter(garden__isnull=False).exists())
+            self.assertEqual(current.get_model("garden", "GardenItem").objects.values("public_id").distinct().count(), 1)
+            self.assertEqual(current.get_model("garden", "TaskOccurrence").objects.values("public_id").distinct().count(), 4)
             # Re-applying migrations is a no-op, including preserved legacy history.
             MigrationExecutor(connection).migrate(latest)
             self.assertEqual(model("TaskOccurrence").objects.filter(item_id=item.pk).count(), 4)
+        finally:
+            MigrationExecutor(connection).migrate(latest)
+
+
+class P1ToP2MigrationTests(TransactionTestCase):
+    def test_existing_accounts_gardens_and_history_get_distinct_public_ids_without_assignment(self):
+        executor = MigrationExecutor(connection)
+        latest = executor.loader.graph.leaf_nodes()
+        p1 = [("garden", "0011_garden_gardenmembership"), ("accounts", "0001_initial")]
+        try:
+            executor.migrate(p1)
+            old = executor.loader.project_state(p1).apps
+            User = old.get_model("accounts", "User")
+            Garden = old.get_model("garden", "Garden")
+            Membership = old.get_model("garden", "GardenMembership")
+            Item = old.get_model("garden", "GardenItem")
+            Task = old.get_model("garden", "TaskOccurrence")
+            users = [User.objects.create(username=f"p1-user-{index}", password="!") for index in range(2)]
+            gardens = [Garden.objects.create(name=f"P1 garden {index}") for index in range(2)]
+            for user, garden in zip(users, gardens):
+                Membership.objects.create(user=user, garden=garden, role="owner")
+            items = [Item.objects.create(name=f"Legacy plant {index}") for index in range(2)]
+            for index, item in enumerate(items):
+                Task.objects.create(item=item, title="History", occurrence_key=f"p1:{index}", season_year=2025, occurrence_month=9, window_start=date(2025, 9, 1), window_end=date(2025, 9, 30), status="completed")
+
+            MigrationExecutor(connection).migrate(latest)
+            current = MigrationExecutor(connection).loader.project_state(latest).apps
+            self.assertEqual(current.get_model("accounts", "User").objects.values("public_id").distinct().count(), 2)
+            self.assertEqual(current.get_model("garden", "Garden").objects.values("public_id").distinct().count(), 2)
+            self.assertEqual(current.get_model("garden", "GardenItem").objects.values("public_id").distinct().count(), 2)
+            self.assertEqual(current.get_model("garden", "TaskOccurrence").objects.values("public_id").distinct().count(), 2)
+            self.assertFalse(current.get_model("garden", "GardenItem").objects.filter(garden__isnull=False).exists())
+            self.assertEqual(current.get_model("garden", "GardenMembership").objects.count(), 2)
         finally:
             MigrationExecutor(connection).migrate(latest)

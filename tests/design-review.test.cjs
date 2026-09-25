@@ -3,6 +3,7 @@ const assert = require('node:assert/strict');
 const {readFileSync} = require('node:fs');
 const vm = require('node:vm');
 const source = readFileSync('garden/static/garden/app.js', 'utf8');
+const worker = readFileSync('garden/static/garden/sw.js', 'utf8');
 // Load the shipped functions, with only browser startup/event wiring omitted.
 function runtime(extra = {}) {
   const context = vm.createContext({location: {hash:''}, window: {localStorage: {getItem:()=>null}}, document: {}, ...extra});
@@ -68,4 +69,18 @@ test('opening another dialog carries existing undo into that modal', () => {
   const c=runtime({document:{querySelector:()=>message},dialog});
   vm.runInContext('showDialog(dialog)',c);
   assert.ok(opened && attached);
+});
+
+test('browser-only data is scoped by account and garden', () => {
+  assert.match(source, /garden-shopping-v2:\$\{accountStorageScope\}/);
+  assert.match(source, /garden-task-view:\$\{accountStorageScope\}/);
+  assert.match(source, /garden-form-draft:\$\{accountStorageScope\}:\$\{title\}/);
+  assert.doesNotMatch(source, /readPreference\("garden-shopping-v1"/);
+  assert.doesNotMatch(source, /removeItem\("garden-shopping-v1"/);
+});
+
+test('service worker never caches authenticated html or api data', () => {
+  assert.doesNotMatch(worker, /const ASSETS = \["\/"/);
+  assert.match(worker, /pathname\.startsWith\("\/static\/"\)/);
+  assert.doesNotMatch(worker, /caches\.match\("\/"\)/);
 });

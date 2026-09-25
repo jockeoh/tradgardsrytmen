@@ -81,7 +81,8 @@ def materialize_rule(rule, through_year=None, not_before=None):
                     previous.title, previous.instructions = rule.title, rule.instructions
                     previous.category = rule.category
                     previous.window_start, previous.window_end = window_start, window_end
-                    previous.save(update_fields=["rule", "title", "instructions", "category", "window_start", "window_end", "updated_at"])
+                    previous.version += 1
+                    previous.save(update_fields=["rule", "title", "instructions", "category", "window_start", "window_end", "version", "updated_at"])
                 continue
             occurrence, was_created = TaskOccurrence.objects.get_or_create(
                 identity_slot=key,
@@ -99,6 +100,7 @@ def materialize_rule(rule, through_year=None, not_before=None):
                 occurrence.window_start, occurrence.window_end = window_start, window_end
                 occurrence.category = rule.category
                 occurrence.archive_reason, occurrence.archived_at = "", None
+                occurrence.version += 1
                 occurrence.save()
             if was_created:
                 created.append(occurrence)
@@ -106,11 +108,12 @@ def materialize_rule(rule, through_year=None, not_before=None):
 
 
 @transaction.atomic
-def archive_pre_activation_backlog():
+def archive_pre_activation_backlog(garden):
     """Keep newly approved plans forward-looking without deleting task history."""
     archived_at = timezone.now()
     archived = 0
     tasks = TaskOccurrence.objects.filter(
+        item__garden=garden,
         status="pending", manual=False, rule__plan__reviewed_at__isnull=False
     ).select_related("rule__plan")
     for task in tasks:
@@ -121,7 +124,8 @@ def archive_pre_activation_backlog():
         task.skipped_at = archived_at
         if not task.note:
             task.note = "Automatiskt undanlagd: uppgiften skapades från ett kalenderfönster före planens godkännande."
-        task.save(update_fields=["status", "skipped_at", "note", "updated_at"])
+        task.version += 1
+        task.save(update_fields=["status", "skipped_at", "note", "version", "updated_at"])
         archived += 1
     return archived
 
@@ -135,42 +139,43 @@ def archive_task(task, reason):
     task.status = "archived"
     task.archive_reason = reason
     task.archived_at = timezone.now()
-    task.save(update_fields=["status", "archive_reason", "archived_at", "updated_at"])
+    task.version += 1
+    task.save(update_fields=["status", "archive_reason", "archived_at", "version", "updated_at"])
 
 
-def materialize_active_rules():
+def materialize_active_rules(garden):
     from .cleanup import clean_existing_content
-    clean_existing_content(apply=True, queue=False)
-    return sum(len(materialize_rule(rule)) for rule in CareRule.objects.filter(active=True).select_related("item", "plan", "work"))
+    clean_existing_content(garden, apply=True, queue=False)
+    return sum(len(materialize_rule(rule)) for rule in CareRule.objects.filter(item__garden=garden, active=True).select_related("item", "plan", "work"))
 
 
-def visible_pending(day=None):
+def visible_pending(garden, day=None):
     day = day or timezone.localdate()
-    return TaskOccurrence.objects.filter(status="pending", item__active=True, archive_reason="").filter(
+    return TaskOccurrence.objects.filter(item__garden=garden, status="pending", item__active=True, archive_reason="").filter(
         Q(work__excluded_at__isnull=True)
     ).filter(Q(manual=True) | Q(window_end__gte=day)).select_related("item", "item__area", "rule", "work")
 
 
-def dashboard_for(day=None):
+def dashboard_for(garden, day=None):
     day = day or timezone.localdate()
     first = day.replace(day=1)
     last = month_end(day.year, day.month)
-    pending = visible_pending(day)
+    pending = visible_pending(garden, day)
     return {
         "overdue": pending.filter(manual=True, window_end__lt=day),
         "due": pending.filter(window_start__lte=day, window_end__gte=day),
         "later": pending.filter(window_start__gt=day, window_start__lte=add_months(first, 3)),
-        "completed": TaskOccurrence.objects.filter(status="completed", completed_at__date__gte=first, completed_at__date__lte=last).count(),
+        "completed": TaskOccurrence.objects.filter(item__garden=garden, status="completed", completed_at__date__gte=first, completed_at__date__lte=last).count(),
     }
 
 
 @transaction.atomic
-def needs_now(work_id):
+def needs_now(garden, work_id):
     from .care_contract import CareValidationError
     # First statement is a write, serializing SQLite transactions as well as
     # locking the identity on databases supporting row-level locks.
-    WorkIdentity.objects.filter(pk=work_id).update(updated_at=timezone.now())
-    work = WorkIdentity.objects.get(pk=work_id)
+    WorkIdentity.objects.filter(pk=work_id, item__garden=garden).update(updated_at=timezone.now())
+    work = WorkIdentity.objects.get(pk=work_id, item__garden=garden)
     rule = work.rules.filter(active=True, advice_kind="on_demand").order_by('-pk').first()
     if work.excluded_at or not rule or not work.item.active:
         raise CareValidationError("Det finns inget aktivt behovsråd för arbetet.")
@@ -186,9 +191,9 @@ def needs_now(work_id):
 
 
 @transaction.atomic
-def set_excluded(work_id, excluded):
-    WorkIdentity.objects.filter(pk=work_id).update(excluded_at=timezone.now() if excluded else None, updated_at=timezone.now())
-    work = WorkIdentity.objects.get(pk=work_id)
+def set_excluded(garden, work_id, excluded):
+    WorkIdentity.objects.filter(pk=work_id, item__garden=garden).update(excluded_at=timezone.now() if excluded else None, updated_at=timezone.now())
+    work = WorkIdentity.objects.get(pk=work_id, item__garden=garden)
     if excluded:
         for task in work.occurrences.filter(status="pending", manual=False):
             archive_task(task, "Bortvalt: inte relevant här")
@@ -201,11 +206,13 @@ def set_excluded(work_id, excluded):
             if task and not work.occurrences.filter(status="pending").exists():
                 task.status, task.archive_reason, task.archived_at = "pending", "", None
                 task.rule = next(r for r in active if r.advice_kind == "on_demand")
-                task.save(update_fields=["status", "rule", "archive_reason", "archived_at", "updated_at"])
+                task.version += 1
+                task.save(update_fields=["status", "rule", "archive_reason", "archived_at", "version", "updated_at"])
         for rule in active:
             # Includes legacy slots whose identity_slot predates the new model.
             for task in work.occurrences.filter(status="archived", archive_reason="Bortvalt: inte relevant här", rule=rule, identity_slot=None, window_end__gte=timezone.localdate()):
                 task.status, task.archive_reason, task.archived_at = "pending", "", None
-                task.save(update_fields=["status", "archive_reason", "archived_at", "updated_at"])
+                task.version += 1
+                task.save(update_fields=["status", "archive_reason", "archived_at", "version", "updated_at"])
             materialize_rule(rule)
     return work

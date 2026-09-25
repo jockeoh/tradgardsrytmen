@@ -3,9 +3,10 @@ from datetime import date, datetime, timezone as dt_timezone
 from unittest.mock import patch
 from django.test import TestCase, override_settings
 from .models import GardenItem, CarePlanVersion, TaskOccurrence
+from .testing import TenantTestCase
 
 
-class DesignReviewRegressionTests(TestCase):
+class DesignReviewRegressionTests(TenantTestCase):
     @override_settings(OPENAI_API_KEY='test-key-must-never-be-used')
     @patch('garden.views.create_research_proposal')
     def test_saving_plant_never_starts_research(self, research):
@@ -18,7 +19,7 @@ class DesignReviewRegressionTests(TestCase):
         self.assertNotIn('proposal', response.json())
 
     def test_completed_manual_task_does_not_imply_plan_coverage(self):
-        items = [GardenItem.objects.create(name=f'Växt {i}') for i in range(6)]
+        items = [GardenItem.objects.create(garden=self.tenant_garden, name=f'Växt {i}') for i in range(6)]
         task = TaskOccurrence.objects.create(item=items[0], title='Egen uppgift', manual=True,
             occurrence_key='manual-review', season_year=2026, occurrence_month=9,
             window_start=date(2026,9,22), window_end=date(2026,9,22), status='completed',
@@ -34,7 +35,7 @@ class DesignReviewRegressionTests(TestCase):
         self.assertEqual([row['id'] for row in data if row['has_care_plan']], [items[2].pk])
 
     def test_complete_and_undo_refresh_item_tasks_and_history(self):
-        item = GardenItem.objects.create(name='Bokhäck')
+        item = GardenItem.objects.create(garden=self.tenant_garden, name='Bokhäck')
         task = TaskOccurrence.objects.create(item=item, title='Kontrollera jord', manual=True,
             occurrence_key='manual-dialog', season_year=2026, occurrence_month=9,
             window_start=date(2026,9,22), window_end=date(2026,9,22))

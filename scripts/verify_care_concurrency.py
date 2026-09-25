@@ -19,11 +19,12 @@ def main():
         from concurrent.futures import ThreadPoolExecutor
         from django.db import close_old_connections, connections
         from django.utils import timezone
-        from garden.models import GardenItem, WorkIdentity, CarePlanVersion, ResearchProposal, CareRule, TaskOccurrence
+        from garden.models import Garden, GardenItem, WorkIdentity, CarePlanVersion, ResearchProposal, CareRule, TaskOccurrence
         from garden.research import approve_proposal
         from garden.care_contract import plan_comparison
         from garden.tasks import needs_now
-        item = GardenItem.objects.create(name='Samtidighetstest')
+        garden = Garden.objects.create(name='Samtidighetstest')
+        item = GardenItem.objects.create(garden=garden, name='Samtidighetstest')
         work = WorkIdentity.objects.create(item=item, action_key='gallra', scope='hela-växten')
         plan = CarePlanVersion.objects.create(item=item)
         rule = CareRule.objects.create(item=item, plan=plan, work=work, title='Gallra skott', category='Beskära och binda upp',
@@ -49,7 +50,7 @@ def main():
         def need(_):
             close_old_connections()
             try:
-                return needs_now(work2.pk)[0].pk
+                return needs_now(garden, work2.pk)[0].pk
             finally:
                 connections.close_all()
 

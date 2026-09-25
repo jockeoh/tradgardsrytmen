@@ -1,16 +1,18 @@
 # API v1: kontrakt för mobilens första flöde
 
-Status 2026-09-25: **hela HTTP-kontraktet nedan är ett förslag för P2 och
-exempeldata för M1; inga /api/v1/-endpoints är implementerade i P1.**
-Implementerat: User, Garden och GardenMembership i ORM. Nuvarande `/api/`
-är privat, globalt och inte kompatibelt med eller säkrat av detta kontrakt.
-M1 kan låsa exempeldata mot detta dokument; ändringar ska samordnas med P2.
+Status 2026-09-25: P2 implementerar kärnkontraktet nedan lokalt: `/me/`,
+garden-lista/skapa/detalj, plant-lista/skapa/detalj och task-lista/skapa/
+detalj/complete. Nuvarande `/api/` är samtidigt sessionsautentiserat och
+trädgårdsavgränsat för den privata webben. M1 kan använda exemplen som stabila
+fixtures. Auth0 i EU-region är vald men ingen tenant eller klient är ännu
+skapad eller aktiverad, och ingen publik drift är godkänd.
 
 ## Gemensamma regler
 
 Bas `/api/v1/`, HTTPS, JSON UTF-8, `Content-Type: application/json`.
-Opaka ID:n är strängar (exempel `g_01`, `p_01`, `t_01`); klienten får inte
-anta prefix, ordning eller UUID. Serverns interna heltal är inte kontraktet.
+Opaka ID:n är strängar (fixtures kan använda `g_01`, `p_01`, `t_01`); den
+riktiga P2-servern returnerar UUID-strängar. Klienten får inte anta format,
+prefix eller ordning. Serverns interna heltal är inte kontraktet.
 Datum är `YYYY-MM-DD`, tidsstämplar RFC3339 UTC med Z. `version` är positivt
 heltal. Namn trimmas, krävs och får vara 1–120 tecken; task title 1–180,
 notes/instructions/note högst 10 000. Okända skrivfält avvisas med 400;
@@ -22,24 +24,36 @@ limit 1–100, opak cursor, stabil ordning created_at+id stigande. Filter ingår
 i cursorns kontext; ogiltig cursor ger 400. Ingen sidbaserad implicit komplett
 lista. Visa laddning, tomt, fel och nästa sida separat i M1.
 
-## Föreslagen autentisering (beslut krävs före P2)
+## Autentisering: implementerad verifiering och beslutad leverantörsriktning
 
-OIDC Authorization Code med PKCE S256 i systemwebbläsaren. Leverantör, issuer,
-client_id och redirect URI är ännu inte valda. Leverantören hanterar
+Beslut 2026-09-25: Auth0 i EU-region med OIDC Authorization Code och PKCE S256
+i systemwebbläsaren. En faktisk tenant, issuer, client_id och verifierbara
+Universal Links/App Links skapas först i ett separat aktiveringssteg. Leverantören hanterar
 registrering, verifiering och återställning; appen samlar inte lösenord.
 Mobilen verifierar state och nonce och lagrar roterande refresh-token i
 plattformens säkra lagring, aldrig i loggar/vanlig appcache. Begär API-access-token
-med rätt audience. Servern verifierar signatur/JWKS, issuer, audience, exp
-och scope och mappar unik `(issuer, subject)` till Django User i P2. Denna
-mappning finns **inte** i P1. Email får inte användas för automatisk kontolänkning.
+med rätt audience. Servern verifierar RS256-signatur/JWKS, issuer, audience,
+exp, iat och konfigurerat scope och mappar unik `(issuer, subject)` till
+Django User. Email används inte för kontolänkning. Bearer-stödet är avstängt
+om issuer, audience eller JWKS saknas. Privat webb använder Django-session+CSRF.
+P2 accepterar också en giltig Django-session på v1 för lokal/private-webb-
+verifiering; mobilklienten använder Bearer och kan inte förlita sig på cookies.
 
-Arbetsförslag: access-token 10 minuter, refresh-session högst 30 dagar,
-återkallning och rotation vid utloggning/kompromettering. Exakta leverantörs-
-och återkallningsmekanismer måste verifieras innan implementation. Alla
+Beslutad policy: access-token 10 minuter, roterande refresh-token med
+återanvändningsdetektion, högst 30 dagars absolut livslängd och 14 dagars
+inaktivitetsgräns. Under pilot kräver varje nytt subject explicit administrativ
+länkning; automatisk provisionering är avstängd. Utloggning återkallar aktuell
+refresh-token hos leverantören och tömmer säker lokal lagring. Vid kompromettering
+återkallas leverantörens tokenfamilj/session och den lokala spärren sätts. Lokalt finns
+`revoked_before` för omedelbar spärr av äldre access-token samt explicita
+kommandon för identitetslänkning och spärr. Flödet måste provas mot den verkliga
+tenantens logout-/revoke-endpoints före aktivering. Alla
 anrop nedan kräver `Authorization: Bearer <access-token>`; servern kontrollerar
 aktuellt medlemskap vid varje anrop. Efter 401 gör klienten högst ett
 samordnat refresh-försök, sedan ny inloggning. Utloggning återkallar sessionen
-och rensar kontots cache/utkast. Återställd historik läses alltid från servern.
+och rensar aktiv minnescache. Ett lokalt webbutkast får bara återställas för
+exakt samma konto+trädgård; ett annat konto får aldrig se det. Återställd
+historik läses alltid från servern.
 
 ## Behörighetsmatris
 
@@ -139,11 +153,13 @@ Klarmarkering med ny nyckel mot redan completed ger invalid_transition,
 inte en andra historikhändelse. Vid 409 visar klienten färsk status och
 bevarar lokal anteckning tills användaren väljer nästa handling.
 
-## Kvar inför serverimplementation
+## Kvar före mobilaktivering
 
-Besluta OIDC-leverantör och kontolänkning/återkallning, implementera versions-
-och idempotenslagring samt alla behörighetskontroller. P1-modellerna saknar
-ännu API-id, version och domänägarskap. API-modellen är avsiktligt skild från
-ORM. M1 ska även ha fixtures för tom trädgård, saknad plan, 401/404/409,
+Skapa Auth0 EU-tenant och native client, konfigurera verifierbara callback-URL:er
+och prova den beslutade token-, logout-, revoke- och komprometteringspolicyn.
+Versioner, idempotenslagring, opaka ID:n och behörighetskontroller är
+implementerade i P2. Automatisk gallring av äldre kvitton återstår som en
+driftuppgift; de tas inte bort före kontraktets sjudagarsgräns. M1 ska även ha
+fixtures för tom trädgård, saknad plan, 401/404/409,
 avbrutet anrop, paginering och konto med två trädgårdar. Kontraktprov mot P2
 krävs före integration; exempeldata är inte bevis på fungerande server.

@@ -1,16 +1,19 @@
 # Övergång till trädgårdsägarskap
 
-P1, 2026-09-25. Endast modellgrund är implementerad. Privat drift krävs
-fortfarande: äldre `/api/` saknar kundisolering. Att skapa ett konto eller
-medlemskap begränsar inte dagens API. Ingen äldre data tilldelas automatiskt.
+P2 lokalt, 2026-09-25. Domänägarskap, sessionsinloggning, medlemskapskontroll,
+äldre `/api/`, `/api/v1/`, sökning, bootstrap, relationer och schemalagda
+kommandon är nu trädgårdsavgränsade. Privat drift krävs fortfarande tills den
+explicita äldre tilldelningen har övats på en kopia och den beslutade Auth0 EU-
+integrationen har konfigurerats och provats.
+Ingen migrering tilldelar äldre data automatiskt.
 
 ## Modellinventering och nästa steg
 
 | Befintlig modell | Ägarskap i P2 och viktiga kontroller |
 | --- | --- |
-| GardenSettings | Ersätt global `load()`/pk=1 med en inställningspost per Garden; bevara befintliga värden. |
-| GardenArea | Explicit Garden; ändra global namnunikhet till garden + name. |
-| GardenItem | Explicit Garden; area måste tillhöra samma trädgård. Även inaktiva växter bevaras. |
+| GardenSettings | Nullable OneToOne till Garden under övergången; `load(garden)` används i alla datavägar. |
+| GardenArea | Nullable Garden för äldre rader; namnunikhet gäller garden + name. |
+| GardenItem | Nullable Garden för äldre rader, opakt ID/version; area valideras mot samma trädgård. |
 | CarePlanVersion | Härled via item; bevara version, status, research_context, reviewed_at och effective_from. |
 | SourceReference | Härled via plan/item; källor får inte exponeras via främmande plan. |
 | WorkIdentity | Härled via item; merged_into måste ligga inom samma växt/trädgård; bevara action_key och scope. |
@@ -31,8 +34,13 @@ Minst en ägare och överföring av sista ägarskap är framtida transaktionell
 servicelogik; P1 tillåter tom trädgård och flera ägare. Ingen behörighetslogik
 följer automatiskt av rollen. Garden-namn är inte globalt unika.
 
-Auth och accounts är aktiverade; sessionsapp, sessions-/auth-middleware,
-admin och inloggningsroutes är inte aktiverade. Custom User ligger i sin
+Auth, sessionsapp och sessions-/auth-middleware är aktiverade. Privat webb har
+login/logout och en medlemskapskontrollerad trädgårdsväljare. Lokala listor
+och formulärutkast nycklas per konto+trädgård; service workern cachar inte autentiserad HTML.
+Den äldre enhetsgemensamma inköpslistan (`garden-shopping-v1`) lämnas orörd och
+tilldelas inte kontot som råkar logga in först; eventuell import kräver ett
+separat, uttryckligt ägarbeslut.
+Admin är inte aktiverad. Custom User ligger i sin
 apps första migrering och refereras via AUTH_USER_MODEL. Garden 0011
 skapar endast nya tabeller, med beroende till den utbytbara användarmodellen.
 Äldre migreringar ändras inte. Auth skapar grupper/behörigheter men inga
@@ -52,10 +60,10 @@ konton, trädgårdar eller medlemskap. Inga gamla domäntabeller får nya fält.
 | settings/ | Ersätt global singleton med vald trädgård. |
 | push/public-key/, push/subscriptions/, push/test/ | Publik nyckel kan vara gemensam; prenumerationer och testutskick får bara avse behörig mottagare. |
 
-`/` och dess JavaScript behöver samordnad inloggning och vald trädgård;
+`/` och dess JavaScript har samordnad inloggning och vald trädgård;
 `/health/`, `/sw.js` och statiska resurser får inte innehålla kunddata.
-Service worker och lokal inköpslista måste granskas för kontobyte, utloggning
-och cacheisolering. Nya v1-routes får inte lämna gamla routes som bakdörr.
+Service worker cachar endast statiska resurser. Inköpslista och visningsval
+nycklas per konto+trädgård. Nya v1-routes lämnar inte gamla routes som bakdörr.
 
 | Kommando eller intern väg | Övergång |
 | --- | --- |
@@ -69,12 +77,24 @@ och cacheisolering. Nya v1-routes får inte lämna gamla routes som bakdörr.
 | tasks.py, care_contract.py, research.py, cleanup.py | Alla ORM-ingångar måste ta behörigt avgränsad kontext; relationskontroller gäller även bakgrundsjobb. |
 | systemd/scheduled scripts | Uppdatera anrop och privilegier tillsammans med kommandona; loggar/backup är operatörsdata. |
 
+## Explicit administrativ tilldelning
+
+`assign_legacy_garden --owner USER --garden-name NAMN` gör endast en
+förhandsgranskning. `--apply` skapar/återanvänder den uttryckliga trädgården,
+ger det namngivna befintliga kontot ägarroll och knyter endast ännu oägda
+inställningar, områden, växter och pushhistorik atomärt. Kommandot kontrollerar
+korsande relationer och historikradräkning, kan återköras mot `--garden UUID`
+och väljer aldrig första registrerade konto. Backup/återläsningsprov och separat
+operatörsgodkännande krävs före verklig data.
+
 ## Övergångsordning
 
 1. Granska P1 lokalt. Nyinstallation och uppgradering verifieras i isolerade
    databaser; inga produktionskommandon ingår i detta arbete.
-2. P2 lägger nullable garden-relationer och avgränsad servicelogik bakom
-   fortsatt privat drift. Bestäm autentisering och privat webbens övergång.
+2. P2 har lagt nullable garden-relationer och avgränsad servicelogik bakom
+   fortsatt privat drift. Privat webbens sessionsövergång är implementerad;
+   Auth0 EU och explicit administrativ kontolänkning under pilot är beslutade;
+   tenant, native client och logout/revoke-prov återstår.
 3. Öva explicit administrativ backfill till namngiven äldre trädgård och
    verifierat ägarkonto på en säker kopia. Transaktion, idempotent körning,
    radräkning, relationskontroller och full historikjämförelse krävs.

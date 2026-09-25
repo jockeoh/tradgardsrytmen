@@ -12,10 +12,10 @@
   <link rel="manifest" href="{% static 'garden/manifest.webmanifest' %}">
   <link rel="icon" href="{% static 'garden/icons/icon.svg' %}" type="image/svg+xml">
   <link rel="apple-touch-icon" href="{% static 'garden/icons/icon-192.png' %}">
-  <link rel="stylesheet" href="{% static 'garden/app.css' %}?v=20260922b">
+  <link rel="stylesheet" href="{% static 'garden/app.css' %}?v=20260925p2">
   <title>Trädgårdsrytmen · Din trädgård, i din takt</title>
 </head>
-<body>
+<body data-account-id="{{ account_id }}" data-garden-id="{{ garden_id }}">
   {% include 'garden/symbols.html' %}
   <a class="skip-link" href="#main">Hoppa till innehållet</a>
   <aside class="side-nav" aria-label="Huvudnavigation">
@@ -96,6 +96,7 @@
       <section class="view hidden" id="view-settings" aria-label="Inställningar">
         <div class="page-heading"><div><p class="eyebrow">PÅ DINA VILLKOR</p><h2>En trädgård som är din.</h2><p class="lead">Din plats, dina påminnelser och din takt.</p></div></div>
         <form class="settings-form" id="settings-form"><fieldset class="panel"><legend>Din trädgårdsprofil</legend><div class="field-grid"><label class="wide">Trädgårdens namn<input name="garden_name" maxlength="120" required></label><label>Plats<input name="city" autocomplete="address-level2" maxlength="80"></label><label>Odlingszon<input name="cultivation_zone" maxlength="20" inputmode="numeric"></label><label class="wide">Läge<input name="exposure" maxlength="160" placeholder="Till exempel skyddat och kustnära"></label></div><button class="button" type="submit">Spara profil</button></fieldset><fieldset class="panel"><legend>En vänlig påminnelse</legend><p class="muted">Välj om du vill ha notiser på den här enheten. På iPhone behöver appen vara installerad på hemskärmen.</p><label class="switch-row"><span><strong>Månadssammanfattning</strong><small>En lugn överblick i början av månaden</small></span><input type="checkbox" id="notify-monthly" role="switch"></label><label class="switch-row"><span><strong>Uppgiftspåminnelser</strong><small>När det är dags att ge lite omtanke</small></span><input type="checkbox" id="notify-tasks" role="switch"></label><div class="form-actions"><button class="button secondary" type="button" id="save-notifications">Aktivera och spara</button><button class="text-button" type="button" id="test-notification">Skicka testnotis</button></div></fieldset><fieldset class="panel"><legend>Du bestämmer över råden</legend><p class="muted">Nya skötselförslag väntar alltid på din granskning innan de blir en del av din plan.</p><button class="text-button" type="button" data-review>Granska förslag<span class="count-badge" id="proposal-count">0</span><svg class="icon small"><use href="#i-arrow-right"/></svg></button></fieldset></form>
+        <div class="form-actions"><a class="text-button" href="{% url 'select-garden' %}">Byt trädgård</a><form method="post" action="{% url 'logout' %}">{% csrf_token %}<button class="text-button" type="submit">Logga ut</button></form></div>
       </section>
       <footer class="app-footer"><svg class="icon small"><use href="#i-sprout"/></svg>Trädgårdsrytmen<span>Din trädgård, i din takt.</span></footer>
     </main>
@@ -105,6 +106,6 @@
   <dialog id="form-dialog" class="sheet-dialog" aria-labelledby="form-title"><form id="dynamic-form"><button class="dialog-close" type="button" data-close aria-label="Stäng formulär"><svg class="icon"><use href="#i-close"/></svg></button><div id="form-content"></div></form></dialog>
   <dialog id="detail-dialog" class="detail-dialog" aria-label="Trädgårdsdetaljer"><button class="dialog-close" type="button" data-close-detail aria-label="Stäng detaljer"><svg class="icon"><use href="#i-close"/></svg></button><div id="detail-content"></div></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="{% static 'garden/app.js' %}?v=20260922b" defer></script>
+  <script src="{% static 'garden/app.js' %}?v=20260925p2" defer></script>
 </body>
 </html>

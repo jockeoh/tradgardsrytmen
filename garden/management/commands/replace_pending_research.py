@@ -2,6 +2,7 @@ from django.core.management.base import BaseCommand
 
 from garden.models import GardenSettings, ResearchProposal
 from garden.research import ResearchError, create_research_proposal
+from garden.management.garden_target import add_garden_argument, selected_garden
 
 
 REANALYSIS_MARKER = "Ersätts med det nya arbetsrundeschemat."
@@ -10,10 +11,14 @@ REANALYSIS_MARKER = "Ersätts med det nya arbetsrundeschemat."
 class Command(BaseCommand):
     help = "Ersätter markerade väntande analyser med det fasta arbetsrundeschemat."
 
+    def add_arguments(self, parser):
+        add_garden_argument(parser)
+
     def handle(self, *args, **options):
-        garden = GardenSettings.load()
+        target = selected_garden(options)
+        garden = GardenSettings.load(target)
         proposals = list(
-            ResearchProposal.objects.filter(status="pending", error=REANALYSIS_MARKER)
+            ResearchProposal.objects.filter(item__garden=target, status="pending", error=REANALYSIS_MARKER)
             .select_related("item")
             .order_by("item__name", "pk")
         )

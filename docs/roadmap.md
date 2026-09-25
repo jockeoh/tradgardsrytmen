@@ -1,7 +1,8 @@
 # Trädgårdsrytmen: genomförandeplan
 
-Status: 2026-09-25. P1 är implementerad och lokalt verifierad. Användaren har godkänt
-commit/push till uppgiftsgrenen; ingen driftsättning ingår. [Produktmål](product-v1.md) och [arkitektur](architecture.md)
+Status: 2026-09-25. P1 är committad/pushad på sin uppgiftsgren. P2 är lokalt
+implementerad i separat arbetskopia för granskning; ingen commit, push eller
+drift ingår. [Produktmål](product-v1.md) och [arkitektur](architecture.md)
 styr omfattningen.
 
 ## Arbetsordning och beroenden
@@ -123,6 +124,30 @@ Testa främmande objekt-ID:n, relations-ID:n, listor, sökning, bootstrap och
 M1 bygger navigation och kärnflödet i React Native/Expo från kontraktet.
 Återanvänd visuella beslut och texter. Testa laddning, tomma listor, fel och
 utkast. Integrera med P2 vid I1; mobilens exempeldata är inte serververifiering.
+
+## P2: lokalt resultat 2026-09-25
+
+- Nullable ägarskap bevarar äldre rader; `assign_legacy_garden` kräver namngivet
+  konto och trädgård, förhandsgranskar som standard och är atomärt/idempotent.
+- Privat webb har Django-login/logout och trädgårdsväljare. Alla äldre endpoints,
+  bootstrap, sökning, relationer, push och operatörskommandon är avgränsade.
+- `/api/v1/` genomför första manuella flödet med UUID-baserade opaka ID:n,
+  versioner, signerad/filterbunden cursor och beständiga idempotenskvitton.
+- OIDC RS256/JWKS-verifiering och `(issuer, subject)`-mappning finns men är
+  fail-closed utan konfiguration. Auth0 EU och administrativ länkning under
+  pilot är beslutade; ingen tenant, klient eller extern tjänst har skapats.
+- Negativa prov omfattar två konton, främmande objekt/relationer, listor,
+  sökning, återkallat medlemskap, jobb, versionskonflikt och samtidiga
+  idempotenta återförsök.
+
+Beslutad tokenpolicy är 10 minuters access-token, roterande refresh-token med
+30 dagars absolut och 14 dagars inaktiv livslängd samt leverantörs- och lokal
+återkallning. Kvarvarande produktbeslut är transaktionell regel för sista
+ägaren/radering. En fortsatt privat installation med en uttryckligt skapad
+lokal ägare får driftsättas med OIDC avstängt efter att äldre tilldelning och
+backup/återläsning har övats och `TRADGARDSRYTMEN_GARDEN_ID` satts uttryckligen.
+Auth0-integrationen måste vara konfigurerad och provad före publik eller extern
+fleranvändardrift.
 
 ## I1: första gemensamma milstolpen
 

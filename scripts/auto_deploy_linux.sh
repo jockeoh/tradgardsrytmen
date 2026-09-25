@@ -49,11 +49,12 @@ set -a
 source "$ENV_FILE"
 set +a
 runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" migrate --noinput
-runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" seed_garden
+: "${TRADGARDSRYTMEN_GARDEN_ID:?Set TRADGARDSRYTMEN_GARDEN_ID only after explicit legacy assignment}"
+runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" seed_garden --garden "$TRADGARDSRYTMEN_GARDEN_ID"
 # This is a deterministic local transition: it queues legacy rules for human
 # review and archives only unambiguous automatic clutter. The command makes its
 # own integrity-checked database backup and never invokes research or a model.
-runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" clean_care_content --apply --report "$CARE_REPORT"
+runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" clean_care_content --apply --report "$CARE_REPORT" --garden "$TRADGARDSRYTMEN_GARDEN_ID"
 "$VENV/bin/python" "$APP/manage.py" collectstatic --noinput
 chmod -R a+rX "$APP/staticfiles"
 runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" check --deploy

@@ -15,6 +15,7 @@ CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.environ.get("TRADGARDSRYTMEN_CSRF_
 INSTALLED_APPS = [
     "django.contrib.auth",
     "django.contrib.contenttypes",
+    "django.contrib.sessions",
     "accounts",
     "django.contrib.staticfiles",
     "garden",
@@ -22,8 +23,10 @@ INSTALLED_APPS = [
 MIDDLEWARE = [
     "django.middleware.security.SecurityMiddleware",
     "whitenoise.middleware.WhiteNoiseMiddleware",
+    "django.contrib.sessions.middleware.SessionMiddleware",
     "django.middleware.common.CommonMiddleware",
     "django.middleware.csrf.CsrfViewMiddleware",
+    "django.contrib.auth.middleware.AuthenticationMiddleware",
     "django.middleware.clickjacking.XFrameOptionsMiddleware",
 ]
 ROOT_URLCONF = "config.urls"
@@ -58,3 +61,14 @@ OPENAI_MODEL = os.environ.get("TRADGARDSRYTMEN_OPENAI_MODEL", "gpt-5.6-luna")
 VAPID_SUBJECT = os.environ.get("TRADGARDSRYTMEN_VAPID_SUBJECT", "mailto:admin@localhost")
 
 AUTH_USER_MODEL = "accounts.User"
+LOGIN_URL = "/accounts/login/"
+LOGIN_REDIRECT_URL = "/"
+LOGOUT_REDIRECT_URL = "/accounts/login/"
+PASSWORD_RESET_TIMEOUT = 60 * 60
+
+# Bearer authentication stays fail-closed until all three values are configured.
+OIDC_ISSUER = os.environ.get("TRADGARDSRYTMEN_OIDC_ISSUER", "")
+OIDC_AUDIENCE = os.environ.get("TRADGARDSRYTMEN_OIDC_AUDIENCE", "")
+OIDC_JWKS_URL = os.environ.get("TRADGARDSRYTMEN_OIDC_JWKS_URL", "")
+OIDC_REQUIRED_SCOPE = os.environ.get("TRADGARDSRYTMEN_OIDC_REQUIRED_SCOPE", "garden:access")
+OIDC_AUTO_PROVISION = os.environ.get("TRADGARDSRYTMEN_OIDC_AUTO_PROVISION", "0") == "1"
