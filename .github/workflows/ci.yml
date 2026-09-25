@@ -26,5 +26,6 @@ jobs:
       - run: python manage.py makemigrations --check --dry-run
       - run: python manage.py test --noinput
       - run: python manage.py migrate --noinput
-      - run: python manage.py seed_demo
+      - run: python manage.py create_private_owner --username ci-owner > /dev/null
+      - run: python manage.py seed_demo --owner ci-owner
       - run: python manage.py collectstatic --noinput
