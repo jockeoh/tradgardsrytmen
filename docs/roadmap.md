@@ -1,7 +1,7 @@
 # Trädgårdsrytmen: genomförandeplan
 
-Status: första arbetsplan, 2026-09-25. Ingen implementation nedan är ännu
-verifierad som klar. [Produktmål](product-v1.md) och [arkitektur](architecture.md)
+Status: 2026-09-25. P1 är implementerad och lokalt verifierad. Användaren har godkänt
+commit/push till uppgiftsgrenen; ingen driftsättning ingår. [Produktmål](product-v1.md) och [arkitektur](architecture.md)
 styr omfattningen.
 
 ## Arbetsordning och beroenden
@@ -63,6 +63,54 @@ Arbeta i separat arbetskopia från dokumentationscommitten. Använd isolerade
 lokala testdatabaser. Ingen produktionsdata, deployment, commit/push av
 implementationen, externa AI-anrop, betalningar eller meddelandeutskick ingår.
 Rapportera diff, verifiering och återstående risker för granskning.
+
+## P1: faktiskt resultat 2026-09-25
+
+Arbetskopia `/Users/joakimohman/Code/tradgardsrytmen-p1`, gren
+`task/p1-account-foundation`, bas `cfa9bfc`. Kanoniska checkouten har inga
+filändringar. Commit/push av P1 på uppgiftsgrenen godkändes därefter av
+användaren. Ingen deployment eller produktionsdatamutation ingår.
+
+- Egen `accounts.User` baserad på AbstractUser; endast auth/accounts har
+  aktiverats. Ingen sessionsapp, admin, publik registrering eller ny route.
+- Additiva `accounts/0001` och `garden/0011`: Garden och medlemskap med
+  databasunikhet samt check constraint för owner/member. PROTECT skyddar
+  föräldrar mot oavsiktlig kaskadradering.
+- [Inventering och övergångsordning](multiuser-transition.md) omfattar alla
+  befintliga modeller, routes, kommandon och bakgrundsvägar.
+- [API-kontrakt](api-v1.md) ger konkret kärnflöde för M1:s exempeldata,
+  behörighetsmatris, fel, återförsök och förslag om mobil autentisering.
+  Alla v1-endpoints är uttryckligen framtida stöd.
+
+Verifierat med Python 3.12.14 och requirements.txt (Django 5.2.17) i separat
+miljö `/tmp/tradgardsrytmen-p1-runtime`:
+
+- `manage.py test`: **78 godkända**, inklusive fem nya modell-/migreringstester.
+  Ny testdatabas byggs från tomt schema. Uppgraderingsprovet går från garden
+  0010 utan accounts/auth-tabeller till senaste schema; samtliga fält/rader i
+  alla äldre modeller jämförs. Fixtures omfattar plan, källa, arbetsidentitet,
+  regel, granskningskvitto, fyra uppgiftsstatusar och påminnelsehistorik.
+  Inga konton, trädgårdar eller medlemskap skapas av uppgraderingen.
+- Separat temporär checkout från `git archive cfa9bfc`: gamla konfigurationens
+  `migrate` + `seed_demo`, därefter P1:s `migrate` mot samma isolerade fil.
+  Alla äldre tabellrader oförändrade, inklusive 6 växter, 3 områden och
+  11 uppgifter; nya ägarskapstabeller tomma. Separat tom fil migrerades också.
+- `node --test tests/*.test.cjs`: **6 godkända**.
+- `scripts/verify_care_concurrency.py`: fyra samtidiga godkännanden och fyra
+  behovsanrop ger unika uppgifter i temporär SQLite-databas.
+- `manage.py check`, `makemigrations --check --dry-run`, `git diff --check`:
+  godkända. Testmiljön varnar för saknad collectstatic-katalog; inget testfel.
+
+Återkör Django-kontroller med `TRADGARDSRYTMEN_DB_PATH` satt till en separat
+lokal testfil. Testsviten skapar själv en isolerad testdatabas. Ingen riktig
+AI eller push har körts. Browser-/telefonprov och PostgreSQL ingår inte i P1;
+befintligt webbflöde har verifierats med server- och JavaScript-regressioner.
+
+Kvar för P2: välj identitetsleverantör och fastställ token-/återkallningspolicy,
+implementera identitetsmappning, API-version/idempotenslagring, dataägarskap
+och samtliga behörigheter. Besluta transaktionell regel för sista ägare och
+radering. Det gamla globala API:et är fortfarande olämpligt för flera kunder.
+Inga blockerare för lokal P1-granskning; dessa beslut blockerar publik drift.
 
 ## P2 och M1: nästa parallella arbetspaket
 

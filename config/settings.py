@@ -13,7 +13,9 @@ ALLOWED_HOSTS = [h.strip() for h in os.environ.get("TRADGARDSRYTMEN_ALLOWED_HOST
 CSRF_TRUSTED_ORIGINS = [o.strip() for o in os.environ.get("TRADGARDSRYTMEN_CSRF_TRUSTED_ORIGINS", "").split(",") if o.strip()]
 
 INSTALLED_APPS = [
+    "django.contrib.auth",
     "django.contrib.contenttypes",
+    "accounts",
     "django.contrib.staticfiles",
     "garden",
 ]
@@ -54,3 +56,5 @@ DATA_DIR = Path(os.environ.get("TRADGARDSRYTMEN_DATA_DIR", BASE_DIR))
 OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL = os.environ.get("TRADGARDSRYTMEN_OPENAI_MODEL", "gpt-5.6-luna")
 VAPID_SUBJECT = os.environ.get("TRADGARDSRYTMEN_VAPID_SUBJECT", "mailto:admin@localhost")
+
+AUTH_USER_MODEL = "accounts.User"

@@ -1,3 +1,4 @@
+from django.conf import settings
 from django.db import models
 from django.utils import timezone
 from .work_categories import WORK_CATEGORY_CHOICES
@@ -192,3 +193,26 @@ class ReminderDelivery(models.Model):
     sent_at = models.DateTimeField(null=True, blank=True)
     status = models.CharField(max_length=20, default="pending")
     error = models.TextField(blank=True)
+
+
+class Garden(models.Model):
+    name = models.CharField(max_length=120)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class GardenMembership(models.Model):
+    class Role(models.TextChoices):
+        OWNER = "owner", "Ägare"
+        MEMBER = "member", "Medlem"
+
+    garden = models.ForeignKey(Garden, on_delete=models.PROTECT, related_name="memberships")
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, related_name="garden_memberships")
+    role = models.CharField(max_length=10, choices=Role.choices)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["garden", "user"], name="unique_garden_user"),
+            models.CheckConstraint(condition=models.Q(role__in=["owner", "member"]), name="valid_garden_member_role"),
+        ]

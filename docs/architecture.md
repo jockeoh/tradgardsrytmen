@@ -3,7 +3,7 @@
 Status: arbetsriktning och uttryckliga förslag, 2026-09-25.
 Produktomfattning finns i [produktmålen](product-v1.md); ordningen i [arbetsplanen](roadmap.md).
 
-## Nuläge, verifierat i koden
+## Ursprungsläge före P1, verifierat i dokumentationscommitten
 
 Django med SQLite, JSON-endpoints och ett webbgränssnitt i vanlig JavaScript.
 `config/settings.py` aktiverar inte Djangos användar- eller sessionsappar.
@@ -12,6 +12,10 @@ globalt unika namn, och växter saknar trädgårdstillhörighet. API:et föruts�
 ett betrott hushåll. Webbläsaren sparar inköpslistan lokalt; service worker
 cachar skalet men erbjuder inte offline-redigering av trädgårdsdata.
 Se även [nuvarande driftgränser](deployment.md).
+
+P1 tillför nu en lokal konto-/trädgårdsgrund med auth och egen User, men
+fortfarande inga sessionsappar, inloggningsflöden eller kundisolerade endpoints.
+Se [övergångsinventering](multiuser-transition.md) och [API-förslag](api-v1.md).
 
 ## Arbetsriktning
 
