@@ -49,11 +49,37 @@ set -a
 source "$ENV_FILE"
 set +a
 runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" migrate --noinput
-runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" seed_garden
-# This is a deterministic local transition: it queues legacy rules for human
-# review and archives only unambiguous automatic clutter. The command makes its
-# own integrity-checked database backup and never invokes research or a model.
-runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" clean_care_content --apply --report "$CARE_REPORT"
+if [[ -f "$APP/accounts/management/commands/create_private_owner.py" ]]; then
+  if [[ ! "${TRADGARDSRYTMEN_GARDEN_ID:-}" =~ ^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$ ]]; then
+    OWNER_SETUP_TMP=$(mktemp)
+    runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" create_private_owner --username admin > "$OWNER_SETUP_TMP"
+    install -o clawd -g clawd -m 0600 "$OWNER_SETUP_TMP" /home/clawd/.codex/tradgardsrytmen-owner-setup.json
+    rm -f "$OWNER_SETUP_TMP"
+
+    runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" assign_legacy_garden \
+      --owner admin --garden-name "Vår trädgård" > "$STATE_DIR/legacy-assignment-preview.json"
+    runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" assign_legacy_garden \
+      --owner admin --garden-name "Vår trädgård" --apply > "$STATE_DIR/legacy-assignment-applied.json"
+    chown tradgardsrytmen:tradgardsrytmen "$STATE_DIR"/legacy-assignment-*.json
+    chmod 0600 "$STATE_DIR"/legacy-assignment-*.json
+    TRADGARDSRYTMEN_GARDEN_ID=$("$VENV/bin/python" -c 'import json,sys; print(json.load(sys.stdin)["garden_id"])' < "$STATE_DIR/legacy-assignment-applied.json")
+    if grep -q '^TRADGARDSRYTMEN_GARDEN_ID=' "$ENV_FILE"; then
+      sed -i "s/^TRADGARDSRYTMEN_GARDEN_ID=.*/TRADGARDSRYTMEN_GARDEN_ID=$TRADGARDSRYTMEN_GARDEN_ID/" "$ENV_FILE"
+    else
+      printf '\nTRADGARDSRYTMEN_GARDEN_ID=%s\n' "$TRADGARDSRYTMEN_GARDEN_ID" >> "$ENV_FILE"
+    fi
+    export TRADGARDSRYTMEN_GARDEN_ID
+  fi
+  runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" seed_garden --garden "$TRADGARDSRYTMEN_GARDEN_ID"
+  runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" clean_care_content \
+    --garden "$TRADGARDSRYTMEN_GARDEN_ID" --apply --report "$CARE_REPORT"
+else
+  runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" seed_garden
+  # This is a deterministic local transition: it queues legacy rules for human
+  # review and archives only unambiguous automatic clutter. The command makes its
+  # own integrity-checked database backup and never invokes research or a model.
+  runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" clean_care_content --apply --report "$CARE_REPORT"
+fi
 "$VENV/bin/python" "$APP/manage.py" collectstatic --noinput
 chmod -R a+rX "$APP/staticfiles"
 runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" check --deploy
