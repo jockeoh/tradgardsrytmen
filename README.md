@@ -78,3 +78,11 @@ The sprout icon is from [Lucide](https://lucide.dev/); attribution is in [the ic
 ## Design and product direction
 
 The September 2026 redesign adds a botanical identity, responsive navigation, plant filtering, a clearer annual calendar, and soil-to-shopping planning. See [design decisions, partner direction, image provenance and verification](docs/design-refresh.md).
+
+## Mobile product roadmap
+
+The proposed transition to an iPhone and Android product is documented in
+[product goals](docs/product-v1.md), [architecture](docs/architecture.md), and
+[implementation roadmap](docs/roadmap.md). These documents separate agreed
+direction from open decisions; they do not change the current private-only
+security model.
