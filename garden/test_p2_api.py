@@ -1,3 +1,4 @@
+from .testing import bind_web_context
 import json
 from datetime import date, datetime, timedelta, timezone as dt_timezone
 from io import StringIO
@@ -47,6 +48,7 @@ class CoreApiIsolationTests(TestCase):
         session = self.client.session
         session["active_garden_id"] = str(self.garden_a.public_id)
         session.save()
+        bind_web_context(self.client)
 
     def test_v1_and_every_legacy_read_path_hide_other_garden(self):
         base = f"/api/v1/gardens/{self.garden_a.public_id}"
@@ -118,6 +120,7 @@ class CoreApiIsolationTests(TestCase):
         self.assertContains(chooser, "Bobs trädgård")
         selected = self.client.post("/gardens/select/", {"garden_id": str(self.garden_b.public_id)})
         self.assertRedirects(selected, "/")
+        bind_web_context(self.client)
         self.assertContains(self.client.get("/api/bootstrap/"), "Bobs ros")
         self.assertNotContains(self.client.get("/api/bootstrap/"), "Alices ros")
 
@@ -144,6 +147,7 @@ class IdempotencyAndConflictTests(TestCase):
         plant = GardenItem.objects.create(garden=garden, name="Ros")
         task = TaskOccurrence.objects.create(item=plant, title="Vattna", occurrence_key="manual:v", season_year=2026, occurrence_month=9, window_start=date(2026, 9, 26), window_end=date(2026, 9, 26), manual=True)
         path = f"/api/v1/gardens/{garden.public_id}/tasks/{task.public_id}/complete/"
+        bind_web_context(self.client)
         self.assertEqual(self.client.patch(f"/api/tasks/{task.pk}/", json.dumps({"note": "Ändrad i webben"}), content_type="application/json").status_code, 200)
         stale = post_json(self.client, path, {"expected_version": 1, "note": "Lokalt utkast"})
         self.assertEqual(stale.status_code, 409)

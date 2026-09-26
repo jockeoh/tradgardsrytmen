@@ -1,0 +1,10 @@
+[Unit]
+Description=Check Trädgårdsrytmen queue every five minutes
+
+[Timer]
+OnBootSec=2m
+OnUnitInactiveSec=5m
+AccuracySec=10s
+
+[Install]
+WantedBy=timers.target

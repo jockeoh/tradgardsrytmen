@@ -3,10 +3,12 @@ import json
 from functools import wraps
 from uuid import UUID, uuid4
 
+from django.core import signing
 from django.db import IntegrityError, transaction
 from django.http import JsonResponse
 from django.middleware.csrf import CsrfViewMiddleware
 from django.views.decorators.csrf import csrf_exempt
+from django.views.decorators.cache import never_cache
 
 from accounts.authentication import AuthenticationError, authenticate_api_request
 from .models import GardenMembership, IdempotencyRecord
@@ -40,18 +42,47 @@ def _session_csrf_probe(request):
     """Non-exempt callback used only to run Django's standard CSRF checks."""
 
 
+WEB_CONTEXT_SALT = "garden.private-web-context.v1"
+
+
+def web_context_token(membership):
+    """Bind a rendered page to a specific grant, not a mutable session selection."""
+    return signing.dumps({
+        "account": str(membership.user.public_id),
+        "garden": str(membership.garden.public_id),
+        "membership": membership.pk,
+    }, salt=WEB_CONTEXT_SALT)
+
+
 def legacy_garden_required(view):
     @wraps(view)
     def wrapped(request, *args, **kwargs):
         if not getattr(request, "user", None) or not request.user.is_authenticated or not request.user.is_active:
-            return JsonResponse({"error": "Logga in för att fortsätta."}, status=401)
-        membership = active_membership(request)
+            return JsonResponse({"error": "Logga in för att fortsätta.", "code": "unauthenticated"}, status=401)
+        # Never call active_membership here: its single-garden fallback is for a
+        # newly rendered page only, and must not redirect an old page's intent.
+        try:
+            context = signing.loads(request.headers.get("X-Garden-Context", ""), salt=WEB_CONTEXT_SALT)
+        except signing.BadSignature:
+            context = None
+        membership = None
+        if (isinstance(context, dict)
+                and context.get("account") == str(request.user.public_id)
+                and context.get("garden") == request.session.get("active_garden_id")):
+            membership = GardenMembership.objects.select_related("garden").filter(
+                pk=context.get("membership"), user=request.user,
+                garden__public_id=context["garden"],
+            ).first()
         if membership is None:
-            return JsonResponse({"error": "Välj vilken trädgård du vill öppna."}, status=409)
+            return JsonResponse({
+                "code": "context_changed",
+                "error": "Kontot eller trädgården har ändrats, eller din åtkomst har återkallats. "
+                         "Utkastet finns kvar här. Öppna rätt konto och trädgård i en annan flik innan du försöker igen.",
+            }, status=409)
         request.garden = membership.garden
         request.garden_membership = membership
         return view(request, *args, **kwargs)
-    return wrapped
+    return never_cache(wrapped)
 
 
 def active_membership(request):

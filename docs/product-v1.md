@@ -1,8 +1,10 @@
 # Trädgårdsrytmen: produktmål för första mobilversionen
 
-Status: produktmål med lokalt implementerad P2-servergrund, 2026-09-25.
-Mobilklienten och den beslutade Auth0 EU-identitetsleverantören är fortfarande
-inte aktiverade.
+Status: 2026-09-26. P1/P2 finns på main; P3 och rättningar är lokalt verifierade
+men inte driftsatta. Privat SQLite-release är möjlig med de särskilda
+[releasevillkoren](private-release-review.md), oberoende av butikslanseringen.
+M1:s Expo-klient och separat färdig L1-leverans är inte verifierade i tillgängligt
+underlag. Auth0 EU är beslutad riktning men inte verifierat aktiverad.
 Läs tillsammans med [arkitekturen](architecture.md) och [arbetsplanen](roadmap.md).
 
 ## Överenskommen riktning

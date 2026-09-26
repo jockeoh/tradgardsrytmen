@@ -7,6 +7,7 @@ def secured(view):
     return legacy_garden_required(view)
 
 urlpatterns = [
+    path("jobs/<uuid:job_id>/", secured(views.api_job)),
     path("bootstrap/", secured(views.api_bootstrap)),
     path("month/", secured(views.api_month)),
     path("proposals/", secured(views.api_proposals)),

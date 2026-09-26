@@ -1,3 +1,4 @@
+from .testing import bind_web_context
 from datetime import date
 
 from django.contrib.auth import get_user_model
@@ -52,6 +53,7 @@ class AccountFoundationTests(TestCase):
         GardenMembership.objects.create(user=self.user, garden=self.garden, role="owner")
         self.client.force_login(self.user)
         self.assertEqual(self.client.get("/").status_code, 200)
+        bind_web_context(self.client)
         self.assertEqual(self.client.get("/api/bootstrap/").status_code, 200)
 
 

@@ -1,3 +1,4 @@
+from .locking import lock_garden
 """Conservative inventory/cleanup. No model calls, deletion or note edits."""
 from django.db import transaction
 from django.db.models import Max
@@ -9,6 +10,7 @@ from .tasks import archive_task
 
 @transaction.atomic
 def clean_existing_content(garden, apply=False, queue=True):
+    lock_garden(garden.pk)
     tasks_qs = TaskOccurrence.objects.filter(item__garden=garden)
     items_qs = GardenItem.objects.filter(garden=garden)
     rules_qs = CareRule.objects.filter(item__garden=garden)

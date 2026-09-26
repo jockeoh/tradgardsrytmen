@@ -229,15 +229,14 @@ class ProposalTests(TenantTestCase):
             create_research_proposal(self.item, self.garden, mismatched)
 
     @override_settings(OPENAI_API_KEY="test-key")
-    @patch("garden.research.time.sleep")
     @patch("garden.research.urllib.request.urlopen")
-    def test_timeout_retries_once(self, mocked_open, mocked_sleep):
+    def test_timeout_never_resends(self, mocked_open):
         import urllib.error
         from .research import call_openai
         mocked_open.side_effect = urllib.error.URLError("timeout")
-        with self.assertRaisesRegex(ResearchError, "för lång tid"):
+        with self.assertRaisesRegex(ResearchError, "utfall är oklart"):
             call_openai(self.item, self.garden)
-        self.assertEqual(mocked_open.call_count, 2)
+        self.assertEqual(mocked_open.call_count, 1)
 
 
 class ApiAndSearchTests(TenantTestCase):

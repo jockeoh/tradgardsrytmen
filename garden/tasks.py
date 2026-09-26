@@ -1,3 +1,4 @@
+from .locking import lock_garden, lock_item
 import calendar
 from datetime import date
 from django.db import transaction
@@ -47,6 +48,8 @@ def occurrence_specs(rule, season_year):
 
 @transaction.atomic
 def materialize_rule(rule, through_year=None, not_before=None):
+    lock_item(rule.item_id)
+    rule.refresh_from_db()
     today = timezone.localdate()
     if rule.work_id:
         WorkIdentity.objects.filter(pk=rule.work_id).update(updated_at=timezone.now())
@@ -110,6 +113,7 @@ def materialize_rule(rule, through_year=None, not_before=None):
 @transaction.atomic
 def archive_pre_activation_backlog(garden):
     """Keep newly approved plans forward-looking without deleting task history."""
+    lock_garden(garden.pk)
     archived_at = timezone.now()
     archived = 0
     tasks = TaskOccurrence.objects.filter(
@@ -135,7 +139,10 @@ def slot_key(rule, season_year, window_start):
     return f"work:{rule.work_id}:{recurrence}"
 
 
+@transaction.atomic
 def archive_task(task, reason):
+    lock_item(task.item_id)
+    task.refresh_from_db()
     task.status = "archived"
     task.archive_reason = reason
     task.archived_at = timezone.now()
@@ -172,6 +179,7 @@ def dashboard_for(garden, day=None):
 @transaction.atomic
 def needs_now(garden, work_id):
     from .care_contract import CareValidationError
+    lock_garden(garden.pk)
     # First statement is a write, serializing SQLite transactions as well as
     # locking the identity on databases supporting row-level locks.
     WorkIdentity.objects.filter(pk=work_id, item__garden=garden).update(updated_at=timezone.now())
@@ -192,6 +200,7 @@ def needs_now(garden, work_id):
 
 @transaction.atomic
 def set_excluded(garden, work_id, excluded):
+    lock_garden(garden.pk)
     WorkIdentity.objects.filter(pk=work_id, item__garden=garden).update(excluded_at=timezone.now() if excluded else None, updated_at=timezone.now())
     work = WorkIdentity.objects.get(pk=work_id, item__garden=garden)
     if excluded:

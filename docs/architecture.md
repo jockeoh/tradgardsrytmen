@@ -1,7 +1,30 @@
 # Trädgårdsrytmen: målarkitektur
 
-Status: arbetsriktning och uttryckliga förslag, 2026-09-25.
+Status: aktuell lokal integration och målarkitektur, 2026-09-26.
 Produktomfattning finns i [produktmålen](product-v1.md); ordningen i [arbetsplanen](roadmap.md).
+
+## Nuvarande leverans och separata aktiveringssteg
+
+P1/P2 finns på main; tidigare driftuppgifter är inte återverifierade här.
+Samlad P3 + rättningar är lokalt verifierade men ocommittade och inte driftsatta.
+Privat SQLite med DURABLE_JOBS=0 och OIDC av är ett giltigt fortsatt driftläge,
+med [releasevillkor](private-release-review.md). Migration 0013 är obligatorisk
+för paketet även i detta läge. PostgreSQL och ködrift aktiveras separat.
+Diagrammet nedan beskriver målet, inte den nuvarande produktionstopologin.
+
+Webbens signerade sidkontext fryser konto/trädgård/exakt medlemskap. Gemensamt
+trädgårdslås serialiserar domänskrivningar, även äldre webb och v1. Synkron AI
+kontrollerar fryst underlag/behörighet före transport och atomärt vid commit;
+ingen transaktion hålls över nätverket. Timeout ger inget dolt återförsök men
+synkront läge saknar beständig uncertain-spärr för en senare ny avsikt.
+Direkt/köad push bevarar bekräftad leveranshistorik. Transport och databas
+saknar gemensam atomär commit; operatörsavstämning behövs vid oklart utfall.
+Se [transportkontraktet](transport-boundary-review-fixes.md).
+
+M1-klient och färdigt L1-beslutsunderlag är inte verifierade. Native v1 AI/push,
+Auth0-aktivering, offline, betalningar och publik drift återstår enligt
+[prioriterad roadmap](roadmap.md). Modellstöd för flera medlemmar innebär inte
+färdig inbjudan, sista-ägare-överföring eller radering/export.
 
 ## Ursprungsläge före P1, verifierat i dokumentationscommitten
 
@@ -13,7 +36,7 @@ ett betrott hushåll. Webbläsaren sparar inköpslistan lokalt; service worker
 cachar skalet men erbjuder inte offline-redigering av trädgårdsdata.
 Se även [nuvarande driftgränser](deployment.md).
 
-P1 tillförde konto-/trädgårdsgrunden. P2 aktiverar nu säkra Django-sessioner
+P1 tillförde konto-/trädgårdsgrunden. P2 har aktiverat säkra Django-sessioner
 för privat webb, trädgårdsägarskap, medlemskapsavgränsning, opaka API-ID:n,
 versioner, idempotenskvitton och `/api/v1/` för kärnflödet. Bearer-verifiering
 är leverantörsneutral och fail-closed tills issuer, audience och JWKS uttryckligen
@@ -37,9 +60,10 @@ Mobilappen använder TypeScript. Skötselregler och behörigheter avgörs på
 servern; de ska inte kopieras till mobilappen. Delad kod mellan iOS och
 Android ersätter inte plattformsspecifika tester.
 
-Django REST Framework och PostgreSQL är föreslagna senare teknikval; P2:s
-lilla kärn-API använder Django direkt. Jobbsystem och betalningsleverantör är
-öppna. Identitetsriktningen beslutades 2026-09-25: Auth0 i EU-region med
+P2:s lilla kärn-API använder Django direkt. P3 har lokalt implementerat
+PostgreSQL som explicit alternativ och en databasbaserad jobbkö med separat
+worker; båda väntar på releasebeslut. Se [P3-kontraktet](p3-durable-jobs.md).
+Django REST Framework och betalningsleverantör är fortsatt öppna teknikval. Identitetsriktningen beslutades 2026-09-25: Auth0 i EU-region med
 Authorization Code + PKCE, verifierbara Universal Links/App Links, roterande
 refresh-token och återkallning. Beslutet aktiverar eller beställer ingen extern
 tjänst i P2.

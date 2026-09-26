@@ -1,0 +1,14 @@
+[Unit]
+Description=Trädgårdsrytmen queue health (failure requires operator attention)
+
+[Service]
+Type=oneshot
+User=tradgardsrytmen
+Group=tradgardsrytmen
+WorkingDirectory=/opt/tradgardsrytmen/app
+EnvironmentFile=/etc/tradgardsrytmen/tradgardsrytmen.env
+ExecStart=/opt/tradgardsrytmen/venv/bin/python manage.py check_jobs --garden ${TRADGARDSRYTMEN_GARDEN_ID}
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true

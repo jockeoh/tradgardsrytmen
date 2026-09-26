@@ -1,11 +1,18 @@
 # Övergång till trädgårdsägarskap
 
-P2 lokalt, 2026-09-25. Domänägarskap, sessionsinloggning, medlemskapskontroll,
-äldre `/api/`, `/api/v1/`, sökning, bootstrap, relationer och schemalagda
-kommandon är nu trädgårdsavgränsade. Privat drift krävs fortfarande tills den
-explicita äldre tilldelningen har övats på en kopia och den beslutade Auth0 EU-
-integrationen har konfigurerats och provats.
-Ingen migrering tilldelar äldre data automatiskt.
+Status 2026-09-26. P2 finns på main; driftstatus kommer från tidigare
+överlämning. Samlad P3 och kontexträttningar är lokalt verifierade i integration,
+inte driftsatta. Domänägarskap, sessionsinloggning, medlemskapskontroll,
+båda API-generationerna och schemalagda kommandon är trädgårdsavgränsade.
+Privat drift med explicit lokal ägare kan fortsätta med OIDC av enligt
+[releasegrindarna](private-release-review.md). Auth0 krävs inför extern
+fleranvändardrift, inte för denna privata release. Ingen migrering tilldelar
+äldre data automatiskt; faktisk tilldelning och verklig återläsning måste
+kontrolleras av behörig operatör. Skapa inte om en redan verifierad ägare.
+
+Kvar: obligatoriska garden-relationer efter kontrollerad backfill,
+transaktionell sista-ägare-/raderingspolicy och relevanta administrationsflöden.
+Modellens nuläge får inte beskrivas som att dessa delar är färdiga.
 
 ## Modellinventering och nästa steg
 
@@ -53,7 +60,7 @@ konton, trädgårdar eller medlemskap. Inga gamla domäntabeller får nya fält.
 | bootstrap/, month/, search/ | Filtrera alla ingående listor, räknare och sökträffar; byt global settings. |
 | items/, items/:id/ | Trädgårdsfilter för läsning/skrivning; validera area; skydda även borttagning. |
 | areas/, areas/:id/ | Trädgårdsfilter och relationsvalidering vid flytt/radering. |
-| items/:id/research/ | Behörighet, uttrycklig AI-start och budget; jobbet binder garden/item/initiator. |
+| items/:id/research/ | Behörighet och uttrycklig AI-start; P3-jobbet binder garden/item/initiator när kön används. Publik budget/frekvensgräns återstår. |
 | proposals/, proposals/:id/, proposals/:id/approve/ | Kontrollera item/plan och medlemskap igen vid aktivering. |
 | works/:id/, works/:id/need/ | Behörighet till work/item och alla nya uppgifter. |
 | tasks/, tasks/:id/, rules/:id/ | Avgränsa listor, relationer och statusändringar. |
@@ -107,3 +114,17 @@ operatörsgodkännande krävs före verklig data.
 Backup/återläsning ska provas före faktisk övergång. P1:s schemamigrering
 är tekniskt reversibel men bakåtmigrering raderar nya konton/medlemskap;
 rollback efter användning kräver separat bevarandeplan, inte blind migrate.
+
+
+### Rättning av äldre flikars kontext (lokalt 2026-09-26)
+
+Privat webb binder nu alla äldre API-anrop till ett signerat sidtoken för
+konto, trädgård och exakt medlemskap. Val i en annan flik ändrar inte ett
+öppet formulärs destination. API:t avvisar ändrad/återkallad kontext innan
+vyn körs och gör ingen automatisk trädgårdsfallback. Läsningar omfattas också.
+Formulär och utkast stannar kvar vid avvisning eller utloggning; användaren
+återställer rätt konto/trädgård i en annan flik. Se [API-kontraktet](api-v1.md).
+Nya klientresurser har versionsmarkören `20260926context1`, SW-cache v9;
+en äldre redan öppen klient utan token får ett säkert 409 och behöver ny sida.
+Lokala server- och JavaScript-regressioner använder syntetisk SQLite och inga
+externa anrop. Browser/telefon och produktion är inte verifierade här.

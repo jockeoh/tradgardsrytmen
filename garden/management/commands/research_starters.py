@@ -17,7 +17,7 @@ class Command(BaseCommand):
                 continue
             self.stdout.write(f"Analyserar {item.name} …")
             try:
-                create_research_proposal(item, garden)
+                create_research_proposal(item, garden, operator_garden=target)
             except ResearchError as exc:
                 raise CommandError(str(exc)) from exc
         self.stdout.write(self.style.SUCCESS("Förslagen är klara för granskning."))

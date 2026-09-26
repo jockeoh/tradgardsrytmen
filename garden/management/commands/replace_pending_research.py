@@ -30,7 +30,7 @@ class Command(BaseCommand):
         for proposal in proposals:
             self.stdout.write(f"Analyserar {proposal.item.name} …")
             try:
-                create_research_proposal(proposal.item, garden)
+                create_research_proposal(proposal.item, garden, operator_garden=target)
             except ResearchError as exc:
                 failed.append(f"{proposal.item.name}: {exc}")
                 self.stderr.write(self.style.WARNING(failed[-1]))

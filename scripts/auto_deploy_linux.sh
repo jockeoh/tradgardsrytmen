@@ -10,6 +10,21 @@ ENV_FILE=/etc/tradgardsrytmen/tradgardsrytmen.env
 STATE_DIR=/var/lib/tradgardsrytmen
 LOCK_FILE=/run/lock/tradgardsrytmen-deploy.lock
 
+# PostgreSQL cutover is separate; only a verified backend may be deployed.
+if [[ -f "$ENV_FILE" ]]; then
+  set -a
+  source "$ENV_FILE"
+  set +a
+fi
+case "${TRADGARDSRYTMEN_DB_ENGINE:-sqlite}" in
+  sqlite) ;;
+  postgresql)
+    [[ "${TRADGARDSRYTMEN_POSTGRES_DEPLOY_READY:-0}" == 1 ]] || {
+      echo "PostgreSQL cutover has not been verified; deployment stopped." >&2; exit 1;
+    } ;;
+  *) echo "Unsupported backend; deployment stopped." >&2; exit 1 ;;
+esac
+
 exec 9>"$LOCK_FILE"
 flock -n 9 || exit 0
 cd "$CHECKOUT"
@@ -31,11 +46,40 @@ if [[ "$LOCAL_REV" == "$REMOTE_REV" && "$DEPLOYED_REV" == "$REMOTE_REV" && -f "$
   exit 0
 fi
 
-if [[ -f "$STATE_DIR/db.sqlite3" && -x "$VENV/bin/python" ]]; then
-  runuser -u tradgardsrytmen -- env TRADGARDSRYTMEN_DB_PATH="$STATE_DIR/db.sqlite3" TRADGARDSRYTMEN_DATA_DIR="$STATE_DIR" "$VENV/bin/python" "$APP/manage.py" backup_database
-fi
+# Approval is tied to one verified revision, not a permanent bypass of CI.
+git_as_clawd merge-base --is-ancestor "$LOCAL_REV" "$REMOTE_REV"
+[[ "$(cat "$STATE_DIR/release-approved" 2>/dev/null || true)" == "$REMOTE_REV" ]] || {
+  echo "Revision requires completed CI and an explicit release-approved marker." >&2
+  exit 1
+}
+[[ -x "$VENV/bin/python" && -f "$APP/manage.py" ]] || {
+  echo "Existing runtime required; first installation uses a separate bootstrap." >&2; exit 1;
+}
+: "${TRADGARDSRYTMEN_GARDEN_ID:?An explicit garden is required before maintenance}"
+# Close the private ingress before draining bounded web requests. Timers are
+# stopped, but running jobs are allowed to finish rather than killed mid-send.
+systemctl stop tradgardsrytmen-autodeploy.timer tradgardsrytmen-reminders.timer tradgardsrytmen-tasks.timer tradgardsrytmen-backup.timer
+for unit in tradgardsrytmen-jobs.timer tradgardsrytmen-jobs-health.timer; do
+  if systemctl cat "$unit" >/dev/null 2>&1; then systemctl stop "$unit"; fi
+done
+systemctl stop tradgardsrytmen-tailscale.service
+sleep 125
+for unit in tradgardsrytmen-reminders.service tradgardsrytmen-tasks.service tradgardsrytmen-backup.service tradgardsrytmen-jobs.service; do
+  for attempt in {1..180}; do
+    state=$(systemctl show "$unit" -p ActiveState --value 2>/dev/null || true)
+    [[ "$state" != active && "$state" != activating && "$state" != deactivating ]] && break
+    sleep 1
+  done
+  [[ "$state" != active && "$state" != activating && "$state" != deactivating ]] || {
+    echo "Writer still active: $unit; maintenance retained." >&2; exit 1;
+  }
+done
+systemctl stop tradgardsrytmen.service
+# Use the effective service backend/path. A missing source fails closed.
+runuser -u tradgardsrytmen -- "$VENV/bin/python" "$APP/manage.py" backup_database
 
-git_as_clawd pull --ff-only --quiet origin main
+git_as_clawd merge --ff-only --quiet "$REMOTE_REV"
+[[ "$(git_as_clawd rev-parse HEAD)" == "$REMOTE_REV" ]]
 mkdir -p "$APP"
 rsync -a --delete --exclude '.git' --exclude '.venv' --exclude 'db.sqlite3' --exclude 'staticfiles' "$CHECKOUT/" "$APP/"
 chmod 0755 "$RUNTIME" "$APP"
@@ -64,6 +108,9 @@ install -m 0644 "$APP"/systemd/*.service "$APP"/systemd/*.timer /etc/systemd/sys
 systemctl daemon-reload
 systemctl enable --now tradgardsrytmen.service tradgardsrytmen-backup.timer tradgardsrytmen-tasks.timer tradgardsrytmen-reminders.timer tradgardsrytmen-autodeploy.timer tradgardsrytmen-tailscale.service
 systemctl restart tradgardsrytmen.service
+if [[ "${TRADGARDSRYTMEN_DURABLE_JOBS:-0}" == 1 ]]; then
+  systemctl enable --now tradgardsrytmen-jobs.timer tradgardsrytmen-jobs-health.timer
+fi
 
 for _ in {1..20}; do
   if curl --fail --silent --show-error http://127.0.0.1:10443/health/ >/dev/null; then

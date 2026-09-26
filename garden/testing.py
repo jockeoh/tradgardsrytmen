@@ -4,6 +4,12 @@ from django.test import TestCase
 from .models import Garden, GardenMembership
 
 
+def bind_web_context(client):
+    """Simulate loading a page before issuing private-web API calls."""
+    page = client.get("/")
+    client.defaults["HTTP_X_GARDEN_CONTEXT"] = page.context["web_context"]
+
+
 class TenantTestCase(TestCase):
     """Authenticated, explicitly owned garden for legacy-web regression tests."""
 
@@ -16,3 +22,4 @@ class TenantTestCase(TestCase):
         session = self.client.session
         session["active_garden_id"] = str(self.tenant_garden.public_id)
         session.save()
+        bind_web_context(self.client)

@@ -8,6 +8,7 @@ function savePreference(key, value) {
   catch { return false; }
 }
 
+const pageContext = document.body?.dataset.webContext || "";
 const accountStorageScope = `${document.body?.dataset.accountId || "anonymous"}:${document.body?.dataset.gardenId || "none"}`;
 
 function savedGrouping() {
@@ -56,16 +57,21 @@ function csrfToken() {
 }
 
 async function api(url, options = {}) {
-  const headers = {"Content-Type": "application/json", ...(options.headers || {})};
+  const headers = {"Content-Type": "application/json", ...(options.headers || {}), "X-Garden-Context": pageContext};
   if (options.method && options.method !== "GET") headers["X-CSRFToken"] = csrfToken();
-  const response = await fetch(url, {...options, headers});
+  const response = await fetch(url, {...options, headers, cache: "no-store"});
   const data = await response.json().catch(() => ({}));
   if (response.status === 401) {
     try { window.sessionStorage.setItem(`garden-return:${accountStorageScope}`, location.href); } catch {}
-    location.assign(`/accounts/login/?next=${encodeURIComponent(location.pathname + location.search + location.hash)}`);
-    throw new Error("Logga in för att fortsätta.");
+    // Keep this document and all in-memory drafts intact. Login in another tab
+    // can restore the original context without relabelling drafts as another user.
+    throw new Error("Du är utloggad. Utkastet finns kvar här. Logga in på samma konto i en annan flik och försök igen.");
   }
-  if (!response.ok) throw new Error(typeof data.error === "string" ? data.error : data.error?.message || "Något gick fel.");
+  if (!response.ok) {
+    const error = new Error(typeof data.error === "string" ? data.error : data.error?.message || "Något gick fel.");
+    error.status = response.status;
+    throw error;
+  }
   return data;
 }
 
@@ -380,6 +386,7 @@ function openForm(title, body, submitLabel, onSubmit) {
   form.onchange = saveDraft;
   form.onsubmit = async event => {
     event.preventDefault();
+    saveDraft();
     const button = form.querySelector("[type=submit]");
     form.querySelector('.form-error')?.remove();
     button.disabled = true; button.textContent = "Sparar …";
@@ -429,7 +436,7 @@ async function openItem(id) {
       <dl class="plant-facts"><div><dt>Sort</dt><dd>${escapeHtml(item.cultivar || "Ej angiven")}</dd></div><div><dt>Antal</dt><dd>${item.quantity}</dd></div><div><dt>Växttyp</dt><dd>${escapeHtml(item.category || "Ej angiven")}</dd></div><div><dt>Område</dt><dd>${escapeHtml(item.area?.name || "Inte placerat")}</dd></div><div><dt>Platsdetalj</dt><dd>${escapeHtml(item.location_detail || "Ej angiven")}</dd></div>${item.age_stage?`<div><dt>Ålder/stadium</dt><dd>${escapeHtml(item.age_stage)}</dd></div>`:""}</dl>
       ${item.notes?`<p>${escapeHtml(item.notes)}</p>`:""}
       <section class="detail-section"><h3>Nästa uppgifter</h3>${item.next_tasks?.length?item.next_tasks.map(taskRow).join(""):'<p class="muted">Inga aktiva uppgifter ännu.</p>'}</section>
-      <section class="detail-section"><h3>Skötselråd</h3>${plan?`<p>${escapeHtml(plan.summary)}</p>${plan.warnings?.map(w=>`<p>⚠ ${escapeHtml(w)}</p>`).join("")||""}`:'<p class="muted">Hämta ett källbelagt förslag och granska det innan något läggs i årshjulet.</p>'}<p class="research-disclosure">När du hämtar råd skickas växtinformation, egna anteckningar, trädgårdens platsprofil och skötselhistorik till OpenAI. Därefter granskar du råden innan de läggs i planen.</p><button class="button secondary" data-research="${item.id}">${plan?"Uppdatera skötselråd":"Hämta skötselråd"}</button></section>
+      <section class="detail-section"><h3>Skötselråd</h3>${plan?`<p>${escapeHtml(plan.summary)}</p>${plan.warnings?.map(w=>`<p>⚠ ${escapeHtml(w)}</p>`).join("")||""}`:'<p class="muted">Hämta ett källbelagt förslag och granska det innan något läggs i årshjulet.</p>'}<p class="research-disclosure">När du hämtar råd skickas växtinformation, egna anteckningar, trädgårdens platsprofil och skötselhistorik till OpenAI. Därefter granskar du råden innan de läggs i planen.</p>${researchJobMarkup(data.research_job)}<button class="button secondary" ${["queued","running","sending","uncertain"].includes(data.research_job?.state)?"disabled":""} data-research="${item.id}">${plan?"Uppdatera skötselråd":"Hämta skötselråd"}</button></section>
       <section class="detail-section"><h3>Vid behov och allmänna råd</h3>${item.advice?.map(adviceMarkup).join('') || '<p>Inga råd ännu.</p>'}</section>
       <details class="detail-section"><summary>Historik (${item.history?.length || 0})</summary>${item.history?.map(taskRow).join('') || '<p>Ingen historik ännu.</p>'}</details>
       <details class="detail-section"><summary>Bortval (${item.excluded?.length || 0})</summary>${item.excluded?.map(w=>`<p>${escapeHtml(w.title)} · ${escapeHtml(w.scope)} <button class="text-button" data-restore="${w.id}">Återställ</button></p>`).join('') || '<p>Inga beständiga bortval.</p>'}</details>
@@ -448,8 +455,8 @@ function editItem(item) {
     let message = "Växten är uppdaterad";
     if (refresh) {
       try {
-        await api(`/api/items/${item.id}/research/`, {method:"POST", body:"{}"});
-        message = "Växten är uppdaterad och ett nytt förslag väntar på granskning";
+        const result = await requestResearch(item.id);
+        message = result.job ? "Växten är uppdaterad och analysen är köad" : "Växten är uppdaterad och ett nytt förslag väntar på granskning";
       } catch (error) {
         message = `Växten sparades, men råden kunde inte uppdateras: ${error.message}`;
       }
@@ -483,9 +490,28 @@ function proposalMarkup(plan) {
 
 function monthName(month){return ["jan","feb","mar","apr","maj","jun","jul","aug","sep","okt","nov","dec"][month-1]}
 
+function researchJobMarkup(job) {
+  if (!job || job.state === "succeeded") return "";
+  const messages = {reconciled:"Analysens utfall har stämts av. Ingen ny analys har skickats. Du kan uttryckligen begära nya råd.", queued:"Analysen är köad. Öppna växten igen för aktuell status.", running:"Analysen förbereds.", sending:"Analysen pågår.", uncertain:"Analysens utfall är oklart efter ett avbrott. Den körs inte igen automatiskt. Kontakta administratören.", cancelled:"Analysen avbröts eftersom behörighet eller underlag ändrades. Du kan begära nya råd.", failed:"Analysen kunde inte slutföras. Du kan begära nya råd."};
+  return `<p role="status">${escapeHtml(messages[job.state] || "Okänd analysstatus")}</p>`;
+}
+
+const researchKeys = new Map();
+async function requestResearch(itemId) {
+  if (!researchKeys.has(itemId)) researchKeys.set(itemId, crypto.randomUUID());
+  try {
+    const result = await api(`/api/items/${itemId}/research/`, {method:"POST", headers:{"Idempotency-Key":researchKeys.get(itemId)}, body:"{}"});
+    researchKeys.delete(itemId);
+    return result;
+  } catch (error) {
+    if (error.status >= 400 && error.status < 500) researchKeys.delete(itemId);
+    throw error;
+  }
+}
+
 async function research(itemId, button) {
   button.disabled=true; const original=button.textContent; button.textContent="Söker hos betrodda källor …";
-  try { await api(`/api/items/${itemId}/research/`, {method:"POST", body:"{}"}); toast("Förslaget är redo att granskas"); await openItem(itemId); }
+  try { const result = await requestResearch(itemId); toast(result.job ? "Analysen är köad. Öppna växten igen för att se resultatet." : "Förslaget är redo att granskas"); await openItem(itemId); }
   catch(e){toast(e.message); button.disabled=false; button.textContent=original;}
 }
 

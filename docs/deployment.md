@@ -1,6 +1,34 @@
 # Configuration and private deployment
 
+Senare aktiveringsarbete: [privat P3-release och driftaktivering](p3-activation.md).
+Den daterade granskningen nedan är underlaget före aktiveringsbeställningen.
+
 The default settings support local development. Copy values from `.env.example` into your shell or service environment as needed; Django does not automatically read that file.
+
+## Current private release gate (2026-09-26)
+
+The complete integrated P3 delivery is locally verified but uncommitted and
+not deployed. **YES WITH CONDITIONS** for the existing single-owner SQLite
+installation with DURABLE_JOBS=0 and OIDC disabled. Migration 0013 still runs;
+web context, synchronous research, reminders and backup also change with the
+queue disabled. See the [private release assessment](private-release-review.md)
+for evidence, limitations and the ordered operator checklist.
+
+Before release, an authorized operator must verify the actual database/schema,
+owner and configuration, restore a real backup, rehearse 0013 plus seed/cleanup,
+and plan a write-free maintenance window. The deploy script's initial backup
+uses a fixed SQLite path and does not stop writers or automatically roll back.
+Verify that path against the service database; a missing/mismatched backup is
+a release stop. The script re-enables timers, which can resume external effects.
+Coordinate that explicitly. Hold automatic deployment until the final revision's
+CI and release gates have passed. Browser/PWA transition and draft preservation
+need verification; old pages without the signed context receive 409.
+
+After release, require terminal deploy success, matching runtime/deployed SHA,
+schema, service/timer state, authenticated data/history checks and static/cache
+markers. Health alone is insufficient. No production checks or external calls
+were performed by this documentation review. PostgreSQL cutover and queue
+activation have separate gates and are not prerequisites for private SQLite.
 
 ## Optional integrations
 
@@ -106,3 +134,18 @@ subscriptions atomically while preserving task, proposal, reminder and delivery 
 the printed garden UUID and use it for later scoped commands. Re-run the preview after application
 to verify that no unassigned rows or cross-garden relations remain. Rehearse this against a restored
 copy of the real database before any deployment.
+
+
+## P3 local implementation (not activated)
+
+PostgreSQL is selected explicitly with `TRADGARDSRYTMEN_DB_ENGINE=postgresql`
+and PGDATABASE/PGUSER/PGHOST; TLS defaults to verify-full. SQLite remains the
+default. Backups and cleanup use the selected backend, including pg_dump for
+PostgreSQL. Never use the SQLite-era autodeploy for a PostgreSQL cutover: it
+now refuses that backend before changing code or schema.
+
+`TRADGARDSRYTMEN_DURABLE_JOBS=1` makes explicit web research requests enqueue
+work and makes reminder runs enqueue durable deliveries. This requires an
+explicitly operated worker and an operational plan for uncertain external
+outcomes. Both flags remain off/unselected by default. See the
+[P3 contract and rehearsed cutover requirements](p3-durable-jobs.md).

@@ -10,6 +10,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 def main():
     with TemporaryDirectory(prefix='garden-concurrency-') as directory:
+        os.environ['TRADGARDSRYTMEN_DB_ENGINE'] = 'sqlite'
         os.environ['TRADGARDSRYTMEN_DB_PATH'] = str(Path(directory) / 'test.sqlite3')
         os.environ['DJANGO_SETTINGS_MODULE'] = 'config.settings'
         import django

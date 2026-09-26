@@ -1,3 +1,4 @@
+from django.core.serializers.json import DjangoJSONEncoder
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.db import models
@@ -288,3 +289,61 @@ class IdempotencyRecord(models.Model):
             models.UniqueConstraint(fields=["user", "method", "path", "key"], name="unique_idempotent_request")
         ]
         indexes = [models.Index(fields=["created_at"])]
+
+
+class BackgroundJob(models.Model):
+    """External effects have an explicit uncertainty boundary; never blindly replay them."""
+    public_id = models.UUIDField(default=uuid4, unique=True, editable=False)
+    garden = models.ForeignKey(Garden, on_delete=models.PROTECT)
+    actor = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    membership_pk = models.PositiveBigIntegerField()
+    kind = models.CharField(max_length=16, choices=[("research", "Research"), ("reminder", "Reminder")])
+    key = models.CharField(max_length=240)
+    fingerprint = models.CharField(max_length=64)
+    item = models.ForeignKey(GardenItem, null=True, on_delete=models.PROTECT)
+    delivery = models.OneToOneField(ReminderDelivery, null=True, on_delete=models.PROTECT)
+    proposal = models.OneToOneField(ResearchProposal, null=True, on_delete=models.PROTECT)
+    state = models.CharField(max_length=16, default="queued")
+    attempts = models.PositiveIntegerField(default=0)
+    available_at = models.DateTimeField(default=timezone.now)
+    lease_until = models.DateTimeField(null=True)
+    token = models.UUIDField(null=True)
+    reason = models.CharField(max_length=80, blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.UniqueConstraint(fields=["garden", "actor", "kind", "key"], name="unique_job_request"),
+            models.UniqueConstraint(fields=["item"], condition=models.Q(kind="research", state__in=["queued", "running", "sending", "uncertain"]), name="one_active_research_job"),
+            models.CheckConstraint(condition=models.Q(state__in=["queued", "running", "sending", "succeeded", "failed", "cancelled", "uncertain", "reconciled"]), name="valid_job_state"),
+            models.CheckConstraint(condition=(models.Q(kind="research", item__isnull=False, delivery__isnull=True) | models.Q(kind="reminder", item__isnull=True, delivery__isnull=False)), name="valid_job_target"),
+        ]
+        indexes = [models.Index(fields=["state", "available_at"])]
+
+
+class JobAttempt(models.Model):
+    job = models.ForeignKey(BackgroundJob, on_delete=models.PROTECT, related_name="history")
+    number = models.PositiveIntegerField()
+    token = models.UUIDField(unique=True)
+    started_at = models.DateTimeField(default=timezone.now)
+    finished_at = models.DateTimeField(null=True)
+    outcome = models.CharField(max_length=32, default="running")
+    reason = models.CharField(max_length=80, blank=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=["job", "number"], name="unique_job_attempt")]
+
+
+class JobReconciliation(models.Model):
+    """Append-only operator evidence; the uncertain attempt remains unchanged."""
+    job = models.OneToOneField(BackgroundJob, on_delete=models.PROTECT, related_name="reconciliation")
+    operator = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT)
+    decision = models.CharField(max_length=32, choices=[("confirmed_not_sent", "Confirmed not sent"), ("confirmed_received", "Confirmed received")])
+    evidence = models.CharField(max_length=500)
+    snapshot_hash = models.CharField(max_length=64)
+    snapshot = models.JSONField(encoder=DjangoJSONEncoder)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.CheckConstraint(condition=models.Q(decision__in=["confirmed_not_sent", "confirmed_received"]), name="valid_job_reconciliation")]

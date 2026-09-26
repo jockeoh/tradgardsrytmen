@@ -12,10 +12,10 @@
   <link rel="manifest" href="{% static 'garden/manifest.webmanifest' %}">
   <link rel="icon" href="{% static 'garden/icons/icon.svg' %}" type="image/svg+xml">
   <link rel="apple-touch-icon" href="{% static 'garden/icons/icon-192.png' %}">
-  <link rel="stylesheet" href="{% static 'garden/app.css' %}?v=20260925p2">
+  <link rel="stylesheet" href="{% static 'garden/app.css' %}?v=20260926jobs1">
   <title>Trädgårdsrytmen · Din trädgård, i din takt</title>
 </head>
-<body data-account-id="{{ account_id }}" data-garden-id="{{ garden_id }}">
+<body data-web-context="{{ web_context }}" data-account-id="{{ account_id }}" data-garden-id="{{ garden_id }}">
   {% include 'garden/symbols.html' %}
   <a class="skip-link" href="#main">Hoppa till innehållet</a>
   <aside class="side-nav" aria-label="Huvudnavigation">
@@ -106,6 +106,6 @@
   <dialog id="form-dialog" class="sheet-dialog" aria-labelledby="form-title"><form id="dynamic-form"><button class="dialog-close" type="button" data-close aria-label="Stäng formulär"><svg class="icon"><use href="#i-close"/></svg></button><div id="form-content"></div></form></dialog>
   <dialog id="detail-dialog" class="detail-dialog" aria-label="Trädgårdsdetaljer"><button class="dialog-close" type="button" data-close-detail aria-label="Stäng detaljer"><svg class="icon"><use href="#i-close"/></svg></button><div id="detail-content"></div></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="{% static 'garden/app.js' %}?v=20260925p2" defer></script>
+  <script src="{% static 'garden/app.js' %}?v=20260926jobs1" defer></script>
 </body>
 </html>

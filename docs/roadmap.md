@@ -1,9 +1,66 @@
 # Trädgårdsrytmen: genomförandeplan
 
-Status: 2026-09-25. P1 är committad/pushad på sin uppgiftsgren. P2 är lokalt
-implementerad i separat arbetskopia för granskning; ingen commit, push eller
-drift ingår. [Produktmål](product-v1.md) och [arkitektur](architecture.md)
-styr omfattningen.
+Senare aktiveringsarbete: [privat P3-release och driftaktivering](p3-activation.md).
+Den daterade granskningen nedan är underlaget före aktiveringsbeställningen.
+
+Status: 2026-09-26, efter samlad P3-granskning. P1/P2 finns på lokal main
+`6606e76c8f30d42ff364c0ebfecfd10c13c5d31d`; drift på samma revision är uppgiven
+i tidigare överlämning, inte återverifierad i denna dokumentationsgranskning.
+Hela P3 och rättningarna är implementerade och lokalt verifierade i
+`tradgardsrytmen-p123-review-fixes/jobs-integration`, fortfarande ocommittade.
+Ingen P3-release eller kö-/OIDC-aktivering har gjorts.
+
+**Privat SQLite-release: JA MED VILLKOR**, med DURABLE_JOBS=0 och OIDC av.
+Ingen ny konkret kodblockerare identifierades för detta driftalternativ.
+Produktionsinventering, återläsningsövning och kontrollerad release återstår;
+se [releasebedömning och exakta grindar](private-release-review.md).
+PostgreSQL, mobilappen och hela den publika roadmapen behöver inte vara klara
+för denna privata release. Migration 0013 ingår även med köflaggan av.
+
+[Produktmål](product-v1.md) och [arkitektur](architecture.md) styr omfattningen.
+Daterade leveransavsnitt längre ned är historik; aktuell status och restlista följer här.
+
+## Prioriterad restlista och verifierad status
+
+Ordningen är rekommenderad, inte ett nytt beslut att aktivera externa tjänster.
+M1 och L1 kan göras parallellt med driftförberedelser; I1:s manuella flöde
+behöver inte vänta på köaktivering eller betalningar.
+
+| Prioritet/del | Nuvarande status | Kvar, nytta och beroenden |
+| --- | --- | --- |
+| 1. Privat release | P3 + rättningar lokalt implementerade; 254/254 Django per databas, 15/15 JS. Inte driftsatt. | Verifiera verklig databas/ägare/konfiguration, återläst backup och 0013 på skyddad kopia. Prova gammal/ny webbklient och säkra utkast. Släpp hela integrationsinnehållet i underhållsfönster, verifiera CI, terminal deploystatus, revision, schema, tjänster och historik. Kräver separat releasegodkännande och behörig operatör. |
+| 2. P3 PostgreSQL-cutover | Backend, backup och syntetisk övergång lokalt verifierade; inte aktiverade. | Besluta drift/version, TLS, privilegier, backup/PITR och larm. Anpassa/prova releaseflödet; nuvarande autodeploy stoppar avsiktligt. Öva verklig kopia, alla fält/sekvenser och återgång innan separat godkänt databasbyte. Ger grund för publik belastning. |
+| 3. P3 köaktivering | Jobb/försök, lease/recovery och transportskydd implementerade; flaggan av, ingen worker i drift. | Implementera/granska operatörens avstämning av verkligt uncertain med bevarad historik. Besluta worker/timer, larm, återstart och belastningsprov. Välj och verifiera driftbackend; kön har lokalt testats på båda. Aktivering och verkliga AI-/pushprov kräver separat godkännande. |
+| 4. M1 | Ingen färdig Expo-leverans verifierad; status utanför kontrollerat underlag okänd. | Bygg eller lokalisera och granska Expo/TypeScript-klienten mot P1/P2-kontraktets fixtures. Navigation, kärnflöde, laddning/tomt/fel, utkast, paginering, två trädgårdar och kontoseparering. Låser upp I1. |
+| 4. L1 | Produktförslag finns; ingen färdig separat L1-leverans eller fastställd betal-/offlineomfattning verifierad. | Besluta målgrupp/marknad, betalande part, priser, AI-kvoter, delning, offlineomfattning och webbens framtid. Ger avgränsning för M2/B1/R1; leverantörsavtal och köp är separata externa beslut. |
+| 5. I1 och identitetsaktivering | Manuellt v1-serverflöde lokalt testat. Native och riktig Auth0-integration inte verifierade. | Efter M1: Auth0 EU-tenant/native client, verifierbara länkar, PKCE, säker tokenlagring, refresh/logout/revoke och administrativ subject-länkning. Två konton genomför hela manuella flödet på iOS/Android med bestående historik efter omstart/inloggning. Redovisa simulator och fysisk enhet separat. Extern konfiguration kräver godkännande. |
+| 6. Native AI | P3 ger bara privat webbkö, inga native v1 AI-endpoints. | Specificera/implementera v1 start/status/granskning/godkännande, uttryckligt datamedgivande och utfall/återförsök; koppla till driftklar P3 efter I1. Krävs om AI ingår i mobil v1; inga riktiga prov utan godkännande. |
+| 6. M2 | Offline och native push inte verifierade som implementerade. | Efter I1 + L1: lokal arbetslista och beslutad synkkö, versionskonflikter, idempotens, kontoavskild lagring/rensning. Implementera native push med mottagare/tidszon/deduplicering och fysisk enhetsprovning. Full offline-redigering är inte beslutad v1. |
+| 7. B1 | Köp/tillgång inte verifierade som implementerade. | Efter I1 + L1: välj köptransport, serververifierad tillgång, köp/återställning/förnyelse/uppsägning/återbetalning och deduplicerade händelser. Butikskonton, avtal, betalningar och publicering kräver separata beslut. Villkorligt: bara nödvändigt för betald lansering. |
+| 8. R1 och publik drift | Inte lanseringsklar; lokala testresultat är inte produktionsbevis. | Verifiera kontoåterställning, support, integritetsinformation, export/radering, tillgänglighet och äldre klienter. Inför publik AI-budget/frekvensgränser/kostnadslarm. Verifiera backup/återläsning, driftlarm, belastning, butiksunderlag och båda plattformarna för beslutad v1. Extern pilot och butikslansering godkänns separat. |
+
+Ytterligare kvarvarande server-/produktpunkter från kontrakten:
+
+- Besluta och implementera transaktionell överföring av sista ägare samt
+  konto-/trädgårdsradering med historik- och databevarande. Ingen sådan
+  administrationsväg är exponerad nu; privat ägardrift behöver inte invänta den.
+- Inventera alla äldre nullable garden-relationer och korsande relationer.
+  Obligatorisk tillhörighet kräver separat migration efter verifierad backfill;
+  dagens behörighetsfilter gör inte detta schemastöd färdigt.
+- Besluta driftgallring av idempotenskvitton, aldrig före kontraktets sju dagar.
+- Bevara den gamla enhetsgemensamma inköpslistan; eventuell import kräver
+  uttryckligt ägarbeslut. Inbjudningar/familjedelning kan skjutas efter I1.
+- Synkron AI saknar beständig spärr mot en senare ny uttrycklig analys efter
+  oklart utfall. Privat drift kräver manuell avstämning före ny begäran;
+  denna begränsning får inte ärvas obemärkt av publik/native AI.
+- Följ upp beroendeuppdateringar via separata kompatibilitetskontroller.
+  Byte till DRF är ett öppet teknikval, inte ett releasekrav.
+
+M1/L1-kontrollen omfattade projektets filer, lokala grenar/worktrees och den
+relevanta uppgiften **Utvärdera apparkitektur**
+(`01a0d93e-072e-75a1-b72c-edf8aff60a3c`), där P1 startades men M1/L1 beskrevs
+som framtida spår. Ingen Expo-klient eller separat färdig L1-rapport hittades
+här. Det bevisar inte att arbete saknas på annan plats; ingen av dem markeras klar.
 
 ## Arbetsordning och beroenden
 
@@ -113,7 +170,7 @@ och samtliga behörigheter. Besluta transaktionell regel för sista ägare och
 radering. Det gamla globala API:et är fortfarande olämpligt för flera kunder.
 Inga blockerare för lokal P1-granskning; dessa beslut blockerar publik drift.
 
-## P2 och M1: nästa parallella arbetspaket
+## P2 och M1: paketens beroenden
 
 P2 implementerar beslutad autentisering och serverflödet. Äldre data får en
 explicit trädgård utan att historik skrivs om. Alla tillgängliga datavägar,
@@ -162,3 +219,77 @@ L1 måste få produktbeslut innan B1 och M2 låser deras beteenden. R1 omfattar
 kontoåterställning, export/radering, kostnadsgränser, återställningsprov,
 support, integritetsuppgifter, tillgänglighet och relevanta butiksprov.
 En grön testsvit innebär inte i sig att appen är godkänd eller lanseringsklar.
+
+
+## P1/P2: releaseuppdatering 2026-09-26
+
+P1/P2 är släppta enligt överlämningen. Tidigare lokalstatus ovan är historisk.
+Den tidigare P3-uppgiften rapporterade läsande verifiering av ren main och servercheckout på
+`6606e76`, aktiv webb/påminnelsetimer, HTTP 200 från `/health/` och avslutad
+autodeploy med Result=success/ExecMainStatus=0. Tjänstens datakatalog kräver
+behörighet som inte finns för aktuell SSH-användare; produktionsdatabasens
+schema, innehåll, deployed_commit-markör och `admin`-tilldelning har därför
+inte återverifierats här. Det begränsar releaseunderlaget men hindrar inte
+isolerad lokal P3-utveckling.
+
+## P3: ursprungligt lokalt resultat 2026-09-26 (historik)
+
+Worktree `/Users/joakimohman/Code/tradgardsrytmen-p3`, gren
+`task/p3-durable-jobs`, bas `6606e76`. [Omfattning, acceptans och releasegräns](p3-durable-jobs.md).
+
+- Explicit PostgreSQL-konfiguration med TLS-standard och låst psycopg; SQLite
+  kvar som standard. PostgreSQL-fel faller aldrig tillbaka till annan databas.
+- Additiv migration 0013 för beständiga jobb och försök. Idempotens,
+  databasunikhet för aktiv AI per växt, atomär claim, lease/token,
+  begränsad recovery/backoff, bevarad försökshistorik och separata oklara utfall.
+- Kontroller av trädgård, beställare, medlemskapets identitet och oförändrat
+  underlag före/efter extern effekt; indata fryses före sändning.
+- Privat webbens uttryckliga AI-begäran och påminnelsetimern använder kön när
+  flaggan aktiveras. Worker är avgränsad per trädgård och kräver explicit
+  extern opt-in. Ingen worker installeras eller aktiveras av denna ändring.
+- Backendmedveten backup/cleanup och syntetiskt överförings-/återställningsprov.
+  Gammal autodeploy stoppar för PostgreSQL tills separat releaseflöde granskats.
+- GitHub CI utökad för PostgreSQL 17 och SQLite med filbaserade konkurrensprov.
+  CI-konfigurationen är lokalt granskad men har inte körts på GitHub.
+
+Verifierat lokalt med Python 3.12, Django 5.2.17, psycopg 3.2.10 och PostgreSQL
+17.11 (isolerad socket, ingen publik lyssnare):
+
+- Hela Django-sviten: **122/122 på filbaserad SQLite och 122/122 på PostgreSQL**,
+  utan överhoppade konkurrensprov.
+- JavaScript: **11/11**, inklusive bevarad återförsöksnyckel efter nätverksfel,
+  korrekt kömeddelande och uttrycklig information om oklart utfall.
+- Överföring/återläsning: **32 syntetiska rader**, samtliga exporterade fält
+  identiska i SQLite, PostgreSQL och återläst PostgreSQL-backup. Källfilens
+  SHA-256 oförändrad; nästa sekvens-ID kunde skapas utan konflikt.
+- `check`, `makemigrations --check --dry-run`, JavaScript-/shellsyntax och
+  `git diff --check` godkända. Testerna varnar om saknad collectstatic-katalog
+  och avsiktligt override av backupkonfiguration; inga testfel.
+- Negativa prov omfattar tomt leverantörssvar utan dolt andra AI-anrop,
+  timeout, sena svar, medlemskap, ändrat underlag, samtidiga workers/anrop/timers,
+  utgången påminnelse och misslyckad backup utan publicerad slutfil.
+
+Lokala granskningsloggar finns i `/tmp/p3-sqlite-tests.log` och
+`/tmp/p3-postgres-tests.log`. PostgreSQL installerades lokalt för proven;
+ingen inloggnings-/systemtjänst aktiverades. Kanoniska checkouten är fortsatt
+ren på basrevisionen. Alla externa transporter i jobbstesterna är mockade.
+
+Kvar före PostgreSQL-cutover/köaktivering: skyddad produktionsinventering och återställningsövning på
+verklig kopia; beslutad PostgreSQL-drift/TLS/backup/PITR; granskat deployflöde,
+workerdrift/larm och operatörsflöde för osäkra externa effekter. Köflaggan är
+avstängd som standard. Auth0, publik AI-budget/frekvensbegränsning och mobilpush
+är fortsatt egna aktiveringskrav. Ingen riktig AI, push, commit, push till Git
+eller deployment har gjorts i P3-tasken.
+
+## P3: samlad aktuell verifiering 2026-09-26
+
+Integrationskopians 142 filer vid denna granskningsstart matchade exakt
+slutmanifestet från transporträttningen, inklusive samtliga kod- och testfiler.
+De faktiska loggarna bekräftar 254/254 Django på filbaserad SQLite respektive
+PostgreSQL 17.11 utan skips, 15/15 JS och 32 fältidentiska syntetiska rader
+SQLite → PostgreSQL → återläst backup. Sviterna har inte rutinmässigt körts om.
+Ett nytt riktat prov av 0012 → 0013 med flaggorna av bevarade 18 syntetiska
+konto-/domänrader fältidentiskt och verifierade SQLite-backup/återläsning före
+och efter migrationen. Detaljer och begränsningar finns i
+[privat releasebedömning](private-release-review.md) och
+[transportgränsens rättningsrapport](transport-boundary-review-fixes.md).

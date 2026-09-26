@@ -1,4 +1,6 @@
+from .locking import garden_mutation
 import json
+from django.conf import settings
 from datetime import date
 from django.db import IntegrityError, transaction
 from django.db.models import Q, F
@@ -10,7 +12,7 @@ from django.views.decorators.csrf import ensure_csrf_cookie
 from django.contrib.staticfiles import finders
 from django.contrib.auth.decorators import login_required
 from django.core.exceptions import ValidationError
-from .api_support import active_membership
+from .api_support import active_membership, web_context_token
 from .models import CarePlanVersion, CareRule, GardenArea, GardenItem, GardenMembership, GardenSettings, PushSubscription, ResearchProposal, TaskOccurrence, WorkIdentity
 from .research import ResearchError, approve_proposal, create_research_proposal
 from .tasks import dashboard_for, visible_pending, month_end, needs_now, set_excluded
@@ -105,6 +107,7 @@ def index(request):
     return render(request, "garden/index.html", {
         "today": timezone.localdate(), "month_name": MONTHS[timezone.localdate().month - 1],
         "account_id": request.user.public_id, "garden_id": membership.garden.public_id,
+        "web_context": web_context_token(membership),
     })
 
 
@@ -196,10 +199,17 @@ def api_items(request):
 
 
 @require_http_methods(["GET", "PATCH"])
+@garden_mutation
 def api_item(request, item_id):
     item = get_object_or_404(GardenItem, garden=request.garden, pk=item_id, active=True)
     if request.method == "GET":
-        return JsonResponse({"item": _item_json(item, True), "proposals": [_plan_json(p.plan) for p in item.proposals.filter(status="pending").order_by("-plan__version")]})
+        data = {"item": _item_json(item, True), "proposals": [_plan_json(p.plan) for p in item.proposals.filter(status="pending").order_by("-plan__version")]}
+        if settings.DURABLE_JOBS:
+            from .models import BackgroundJob
+            job = BackgroundJob.objects.filter(item=item, garden=request.garden, actor=request.user,
+                membership_pk=request.garden_membership.pk).order_by("-pk").first()
+            data["research_job"] = _job_json(job) if job else None
+        return JsonResponse(data)
     data = _json_body(request) or {}
     if "area_id" in data:
         area_id = data.get("area_id")
@@ -223,14 +233,23 @@ def api_item(request, item_id):
 @require_POST
 def api_research(request, item_id):
     item = get_object_or_404(GardenItem, garden=request.garden, pk=item_id, active=True)
+    if settings.DURABLE_JOBS:
+        from .jobs import enqueue_research
+        try:
+            job = enqueue_research(request.garden, request.user, item, request.headers.get("Idempotency-Key", ""))
+        except ValidationError as exc:
+            return JsonResponse({"error": exc.messages[0]}, status=409)
+        return JsonResponse({"job": _job_json(job)}, status=202)
     try:
-        proposal = create_research_proposal(item, GardenSettings.load(request.garden))
+        proposal = create_research_proposal(item, GardenSettings.load(request.garden),
+            actor=request.user, membership_pk=request.garden_membership.pk)
     except ResearchError as exc:
         return JsonResponse({"error": str(exc)}, status=503)
     return JsonResponse({"proposal": _plan_json(proposal.plan)}, status=201)
 
 
 @require_http_methods(["GET", "DELETE"])
+@garden_mutation
 def api_proposal(request, proposal_id):
     proposal = get_object_or_404(ResearchProposal, item__garden=request.garden, pk=proposal_id)
     if request.method == "GET":
@@ -255,6 +274,7 @@ def api_approve_proposal(request, proposal_id):
 
 
 @require_POST
+@garden_mutation
 def api_tasks(request):
     data = _json_body(request) or {}
     try:
@@ -279,6 +299,7 @@ def api_tasks(request):
 
 @require_http_methods(["GET", "PATCH"])
 @transaction.atomic
+@garden_mutation
 def api_task(request, task_id):
     task = get_object_or_404(TaskOccurrence.objects.select_related("item", "item__area", "rule"), item__garden=request.garden, pk=task_id)
     if request.method == "GET":
@@ -311,6 +332,7 @@ def api_task(request, task_id):
 
 @require_http_methods(["PATCH"])
 @transaction.atomic
+@garden_mutation
 def api_rule(request, rule_id):
     rule = get_object_or_404(CareRule, item__garden=request.garden, pk=rule_id, plan__status="pending")
     data = _json_body(request) or {}
@@ -434,6 +456,7 @@ def api_areas(request):
 
 
 @require_http_methods(["PATCH", "DELETE"])
+@garden_mutation
 def api_area(request, area_id):
     area = get_object_or_404(GardenArea, garden=request.garden, pk=area_id)
     if request.method == "DELETE":
@@ -451,6 +474,7 @@ def api_area(request, area_id):
 
 
 @require_http_methods(["GET", "PATCH"])
+@garden_mutation
 def api_settings(request):
     settings = GardenSettings.load(request.garden)
     if request.method == "PATCH":
@@ -469,6 +493,7 @@ def api_push_public_key(request):
 
 
 @require_http_methods(["POST", "DELETE"])
+@garden_mutation
 def api_push_subscription(request):
     data = _json_body(request) or {}
     endpoint = data.get("endpoint") or (data.get("subscription") or {}).get("endpoint")
@@ -495,3 +520,16 @@ def api_push_test(request):
     from .push import send_test_push
     sent = send_test_push(request.garden, request.user)
     return JsonResponse({"ok": True, "sent": sent})
+
+
+def _job_json(job):
+    return {"id": str(job.public_id), "state": job.state, "reason": job.reason,
+            "proposal_id": job.proposal_id}
+
+
+@require_GET
+def api_job(request, job_id):
+    from .models import BackgroundJob
+    job = get_object_or_404(BackgroundJob, public_id=job_id, garden=request.garden,
+                           actor=request.user, membership_pk=request.garden_membership.pk)
+    return JsonResponse({"job": _job_json(job)})

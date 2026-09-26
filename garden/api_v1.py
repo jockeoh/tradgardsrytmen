@@ -1,3 +1,4 @@
+from .locking import lock_garden
 from datetime import date, timezone as dt_timezone
 
 from django.db import transaction
@@ -184,6 +185,7 @@ def plants(request, garden_id):
         return api_error("validation_error", "Kontrollera uppgifterna.", 400, fields)
 
     def create():
+        lock_garden(membership.garden_id)
         item = GardenItem.objects.create(garden=membership.garden, name=name, notes=notes)
         return 201, _plant_json(item)
 
@@ -251,6 +253,7 @@ def tasks(request, garden_id):
         return api_error("validation_error", "Kontrollera uppgifterna.", 400, fields)
 
     def create():
+        lock_garden(membership.garden_id)
         task = TaskOccurrence.objects.create(
             item=item, title=title, instructions=instructions, occurrence_key=f"manual:{uuid4()}",
             season_year=due_date.year, occurrence_month=due_date.month, window_start=due_date, window_end=due_date, manual=True,
@@ -293,7 +296,8 @@ def complete_task(request, garden_id, task_id):
         return api_error("validation_error", "Kontrollera uppgifterna.", 400, {"note": ["too_long" if isinstance(note, str) else "invalid"]})
 
     def complete():
-        locked = TaskOccurrence.objects.select_for_update().select_related("item", "item__garden").get(pk=task.pk)
+        lock_garden(membership.garden_id)
+        locked = TaskOccurrence.objects.select_for_update(of=("self",)).select_related("item", "item__garden").get(pk=task.pk)
         if locked.version != data["expected_version"]:
             return 409, {"error": {"code": "version_conflict", "message": "Uppgiften har ändrats. Hämta den senaste versionen.", "fields": {}, "request_id": f"req_{uuid4().hex}"}}
         if locked.status != "pending":

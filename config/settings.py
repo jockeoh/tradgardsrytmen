@@ -38,7 +38,8 @@ TEMPLATES = [{
 }]
 WSGI_APPLICATION = "config.wsgi.application"
 
-DATABASES = {"default": {"ENGINE": "django.db.backends.sqlite3", "NAME": os.environ.get("TRADGARDSRYTMEN_DB_PATH", BASE_DIR / "db.sqlite3"), "OPTIONS": {"timeout": 20}}}
+from .database import database_config
+DATABASES = {"default": database_config(os.environ, BASE_DIR)}
 LANGUAGE_CODE = "sv-se"
 TIME_ZONE = "Europe/Stockholm"
 USE_I18N = True
@@ -72,3 +73,6 @@ OIDC_AUDIENCE = os.environ.get("TRADGARDSRYTMEN_OIDC_AUDIENCE", "")
 OIDC_JWKS_URL = os.environ.get("TRADGARDSRYTMEN_OIDC_JWKS_URL", "")
 OIDC_REQUIRED_SCOPE = os.environ.get("TRADGARDSRYTMEN_OIDC_REQUIRED_SCOPE", "garden:access")
 OIDC_AUTO_PROVISION = os.environ.get("TRADGARDSRYTMEN_OIDC_AUTO_PROVISION", "0") == "1"
+
+# Opt-in until the worker and operational cutover are explicitly released.
+DURABLE_JOBS = os.environ.get("TRADGARDSRYTMEN_DURABLE_JOBS", "0") == "1"

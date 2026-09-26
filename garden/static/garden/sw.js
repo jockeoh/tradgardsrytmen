@@ -1,5 +1,5 @@
-const CACHE = "tradgardsrytmen-v7";
-const ASSETS = ["/static/garden/app.css?v=20260925p2", "/static/garden/app.js?v=20260925p2", "/static/garden/images/garden-hero.jpg", "/static/garden/icons/icon.svg", "/static/garden/manifest.webmanifest"];
+const CACHE = "tradgardsrytmen-v10";
+const ASSETS = ["/static/garden/app.css?v=20260926jobs1", "/static/garden/app.js?v=20260926jobs1", "/static/garden/images/garden-hero.jpg", "/static/garden/icons/icon.svg", "/static/garden/manifest.webmanifest"];
 self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS))));
 self.addEventListener("activate", event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))));
 self.addEventListener("fetch", event => {

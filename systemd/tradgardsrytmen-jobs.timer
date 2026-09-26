@@ -1,0 +1,10 @@
+[Unit]
+Description=Run bounded Trädgårdsrytmen worker every 30 seconds
+
+[Timer]
+OnBootSec=1m
+OnUnitInactiveSec=30s
+AccuracySec=5s
+
+[Install]
+WantedBy=timers.target

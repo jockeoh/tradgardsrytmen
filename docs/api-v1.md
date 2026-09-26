@@ -7,6 +7,14 @@ trädgårdsavgränsat för den privata webben. M1 kan använda exemplen som stab
 fixtures. Auth0 i EU-region är vald men ingen tenant eller klient är ännu
 skapad eller aktiverad, och ingen publik drift är godkänd.
 
+## Status efter P3-granskning 2026-09-26
+
+P2-kärnan finns på main. Samlad P3 och rättningar är lokalt verifierade,
+ocommittade och inte driftsatta. M1/I1 och verklig Auth0-aktivering är inte
+verifierade. Privat SQLite-release med kö/OIDC av bedöms separat i
+[releaseunderlaget](private-release-review.md); native AI/push tillkommer inte
+av att webbpaketet släpps. Roadmapen listar återstående aktiveringar.
+
 ## Gemensamma regler
 
 Bas `/api/v1/`, HTTPS, JSON UTF-8, `Content-Type: application/json`.
@@ -144,7 +152,8 @@ Aktuell behörighet kontrolleras **före** replay, även efter återkallat medle
 Samma nyckel med annan body ger 409. Endast lyckade mutationer sparas som
 replay; 5xx får inte lämna halvskrivna data eller kvitton.
 
-Klienten återanvänder samma nyckel/body efter timeout, 429 och 503, med
+För de idempotenta manuella v1-mutationerna återanvänder klienten samma
+nyckel/body efter timeout, 429 och 503, med
 exponentiell väntan och jitter, högst tre automatiska försök. Efter 7 dagar
 utan säkert svar krävs avstämning mot servern före ny nyckel. Full offlinekö
 är inte implementerad eller beslutad här. expected_version kontrolleras
@@ -163,3 +172,47 @@ driftuppgift; de tas inte bort före kontraktets sjudagarsgräns. M1 ska även h
 fixtures för tom trädgård, saknad plan, 401/404/409,
 avbrutet anrop, paginering och konto med två trädgårdar. Kontraktprov mot P2
 krävs före integration; exempeldata är inte bevis på fungerande server.
+
+
+## P3 local queue addition
+
+P3 does not add native v1 research/push endpoints. The private web's existing
+`POST /api/items/{integer}/research/` gains an opt-in queue contract when
+`TRADGARDSRYTMEN_DURABLE_JOBS=1`: `Idempotency-Key` is required, 202 returns
+`job: {id, state, reason, proposal_id}`, and GET `/api/jobs/{uuid}/` reads the
+requesting member's job in the selected garden. Invalid/missing keys or active
+job conflicts return 409. A replay returns the original job. Membership must
+still match the original membership row; deleting/recreating it does not grant
+access to old jobs. No read triggers an analysis. With the flag disabled the
+existing synchronous web contract is preserved. Native v1 AI/push is a later
+integration and must not infer that these session routes accept Bearer tokens.
+See [P3](p3-durable-jobs.md) for the state and external uncertainty contract.
+
+
+## Privat webb: sidans konto- och trädgårdskontext
+
+Äldre `/api/` (inte `/api/v1/`) kräver `X-Garden-Context` på både läsningar
+och skrivningar. HTML-sidan utfärdar ett signerat token för det visade kontots
+publika ID, trädgårdens publika ID och den exakta medlemskapsraden. Klienten
+fryser detta token vid sidladdning; det hämtas aldrig om från aktuell session
+för att skicka ett befintligt utkast. Sessionsautentisering och CSRF krävs
+fortfarande. Token är en kontextbindning, inte en ersättning för behörighet.
+
+Saknat/ändrat token, bytt konto/trädgårdsval eller återkallat/återskapat
+medlemskap ger HTTP 409 med `code: "context_changed"` och ett svenskt `error`.
+Ingen äldre API-vy körs då. Endast en ny sidladdning får välja den enda
+kvarvarande trädgården automatiskt; gamla API-anrop får aldrig fallback.
+Utloggat/inaktivt konto ger 401. API-svaren lagras inte i HTTP-cache.
+
+Klienten behåller formuläret, dess utkast och sidans ursprungliga kontext vid
+401/409 utan automatisk navigering eller omsändning. Användaren kan öppna
+rätt konto/trädgård i en annan flik och försöka igen. Återskapat medlemskap
+kräver en ny sida. Befintlig lokal utkastlagring förblir avgränsad per konto
+och trädgård; ett annat konto eller en annan trädgård tar inte över utkastet.
+
+Dessa regler för automatiska återförsök av manuella v1-mutationer gäller inte
+synkron webb-AI eller push. Synkron AI gör ett transportanrop per avsikt och
+kräver manuell avstämning vid oklart utfall; samma klientnyckel ger inte någon
+beständig deduplicering där. I köläge återger samma nyckel jobbet och ett
+uncertain-jobb blockerar nya AI-avsikter för växten tills operatörsavstämning.
+Ingen leverantörsidempotens är verifierad.
