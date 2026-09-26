@@ -1,0 +1,28 @@
+> tradgardsrytmen-mobile@1.0.0 test
+> node --import tsx --test tests/*.test.ts
+
+✔ manual journey and preserved synthetic history after logout/login (7.651375ms)
+✔ fixture field sets match current Python serializers (read-only AST) (24.771291ms)
+✔ two accounts, two own gardens, empty garden and foreign objects/relations (10.663625ms)
+✔ opaque cursor order; rejects changed account, filter, garden and invalid cursor (9.000125ms)
+✔ late response ignored even if transport ignores cancellation and user returns to same garden (0.152959ms)
+✔ late account response and stale form cannot change new account; logout clears drafts (0.173542ms)
+✔ garden drafts survive navigation without crossing garden boundary (0.071542ms)
+✔ double taps and lost response commit once with unchanged key and body (2.818041ms)
+✔ bounded backoff and Retry-After; explicit retry preserves frozen intent and draft (6.765417ms)
+✔ context change during backoff prevents subsequent writes (11.32375ms)
+✔ revoked membership checked before replay; client invalidates active context (3.214625ms)
+✔ 403 preserves draft; 401 clears account, garden and drafts without hidden login or refresh (2.594834ms)
+✔ conflict preserves note; fresh explicit action required; repeated completion rejected (5.141416ms)
+✔ validation retains draft, checks calendar dates/unknown fields and idempotency conflict (6.566833ms)
+✔ uncertain intent older than seven days blocks rekey and requires reconciliation (5.161125ms)
+✔ late successful write cannot publish into another account even if transport ignores abort (0.157958ms)
+✔ history is readable when plant is inactive; no unsupported edit/undo endpoint exists (5.148125ms)
+ℹ tests 17
+ℹ suites 0
+ℹ pass 17
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 217.896333

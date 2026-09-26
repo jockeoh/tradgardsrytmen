@@ -1,0 +1,32 @@
+- generic: TRÄDGÅRDSRYTMEN
+- generic: Lokal förhandsvisning · endast exempeldata
+- button "Tillbaka":
+  - generic: Tillbaka
+- heading "Se över uppbindningen" [level=1]
+- generic: Att göra · 2026-09-26
+- generic: Känn efter en bit ner i jorden innan du vattnar.
+- generic: Sparad anteckning
+- generic: Ändrad i en annan klient.
+- generic: Din anteckning (valfritt)
+- textbox "Din anteckning (valfritt)"
+- generic: Du har tömt fältet. Den sparade anteckningen tas bort vid klarmarkering.
+- button "Behåll den sparade anteckningen":
+  - generic: Behåll den sparade anteckningen
+- alert:
+  - generic: Uppgiften har ändrats. Läs senaste status innan du fortsätter.
+- generic: Senaste status visas ovan. Din anteckning finns kvar. Kontrollera ändringen innan du fortsätter.
+- button "Jag har läst senaste status":
+  - generic: Jag har läst senaste status
+- button "Visa detaljer":
+  - generic: Visa detaljer
+- button "Dölj provverktyg":
+  - generic: Dölj provverktyg
+- generic: Nästa anrop i provmiljön
+- button "Tappa svaret efter sparande":
+  - generic: Tappa svaret efter sparande
+- button "Versionskonflikt":
+  - generic: Versionskonflikt
+- button "Nätverksfel i alla fyra försök":
+  - generic: Nätverksfel i alla fyra försök
+- button "Återkalla medlemskap":
+  - generic: Återkalla medlemskap

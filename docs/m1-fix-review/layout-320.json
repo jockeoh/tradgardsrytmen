@@ -1,0 +1,18 @@
+{
+  "buttons": [
+    {
+      "height": 50,
+      "name": "Tillbaka"
+    },
+    {
+      "height": 50,
+      "name": "Visa detaljer"
+    },
+    {
+      "height": 50,
+      "name": "Visa provverktyg"
+    }
+  ],
+  "scroll": 320,
+  "viewport": 320
+}

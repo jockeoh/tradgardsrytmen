@@ -1,0 +1,73 @@
+
+> tradgardsrytmen-mobile@1.0.0 test
+> node --import tsx --test tests/*.test.ts
+
+✔ manual journey and preserved synthetic history after logout/login (8.294042ms)
+✔ fixture field sets match current Python serializers (read-only AST) (26.445708ms)
+✔ two accounts, two own gardens, empty garden and foreign objects/relations (11.706417ms)
+✔ opaque cursor order; rejects changed account, filter, garden and invalid cursor (10.969542ms)
+✔ late response ignored even if transport ignores cancellation and user returns to same garden (0.191834ms)
+✔ late account response and stale form cannot change new account; logout clears drafts (0.217292ms)
+✔ garden drafts survive navigation without crossing garden boundary (0.112125ms)
+✔ double taps and lost response commit once with unchanged key and body (3.06775ms)
+✔ bounded backoff and Retry-After; explicit retry preserves frozen intent and draft (6.981583ms)
+✔ context change during backoff prevents subsequent writes (12.838084ms)
+✔ revoked membership checked before replay; client invalidates active context (4.208ms)
+✔ 403 preserves draft; 401 clears account, garden and drafts without hidden login or refresh (2.851208ms)
+✔ conflict preserves note; fresh explicit action required; repeated completion rejected (5.801458ms)
+✔ validation retains draft, checks calendar dates/unknown fields and idempotency conflict (5.941167ms)
+✔ uncertain intent older than seven days blocks rekey and requires reconciliation (5.619042ms)
+✔ late successful write cannot publish into another account even if transport ignores abort (0.201709ms)
+✔ history is readable when plant is inactive; no unsupported edit/undo endpoint exists (4.248833ms)
+✔ automatic replay at 604799999 ms checks age immediately before transport (3.011666ms)
+✔ explicit replay at 604799999 ms checks age immediately before transport (6.802458ms)
+✔ automatic replay at 604800000 ms checks age immediately before transport (1.652542ms)
+✔ explicit replay at 604800000 ms checks age immediately before transport (5.546042ms)
+✔ automatic replay at 604800001 ms checks age immediately before transport (1.523208ms)
+✔ explicit replay at 604800001 ms checks age immediately before transport (5.645083ms)
+✔ reselect identical garden: stale write cannot publish; explicit replay uses frozen key (13.25025ms)
+✔ reselect identical account: stale write cannot publish; explicit replay uses frozen key (12.78525ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ mounted garden form: remount during write, late success, stale tap and explicit new intent (87.757625ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ mounted plant form: remount during write, late success, stale tap and explicit new intent (66.735125ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ mounted task form: remount during write, late success, stale tap and explicit new intent (74.398958ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ mounted completion untouched: 409, reload, remount and frozen replay preserve note meaning (63.288625ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ mounted completion changed: 409, reload, remount and frozen replay preserve note meaning (77.20775ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ mounted completion cleared: 409, reload, remount and frozen replay preserve note meaning (65.338959ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ mounted paginated list: late page after remount, network failure and retry, no duplicate rows (111.493291ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ mounted completion remounted before late conflict requires fresh read and acknowledgement (82.852166ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ mounted completion remounted during save observes late success without another completion (58.368542ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ mounted form: revoked access and identical reselection retain frozen intent without exposing another garden/account (94.717208ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ mounted note controls explicitly clear or keep existing server text without sending null (43.067333ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ mounted untouched note directly preserves existing server text (25.616375ms)
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✔ mounted completed receipt does not hide a newer server observation after navigation (44.897167ms)
+ℹ tests 38
+ℹ suites 0
+ℹ pass 38
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1013.624792

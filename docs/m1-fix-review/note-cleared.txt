@@ -1,0 +1,21 @@
+- generic: TRÄDGÅRDSRYTMEN
+- generic: Lokal förhandsvisning · endast exempeldata
+- button "Tillbaka":
+  - generic: Tillbaka
+- heading "Se över uppbindningen" [level=1]
+- generic: Utförd · 2026-09-26
+- generic: Känn efter en bit ner i jorden innan du vattnar.
+- generic: Utförd 2026-09-26 12:54:37
+- button "Visa detaljer":
+  - generic: Visa detaljer
+- button "Dölj provverktyg":
+  - generic: Dölj provverktyg
+- generic: Nästa anrop i provmiljön
+- button "Tappa svaret efter sparande":
+  - generic: Tappa svaret efter sparande
+- button "Versionskonflikt":
+  - generic: Versionskonflikt
+- button "Nätverksfel i alla fyra försök":
+  - generic: Nätverksfel i alla fyra försök
+- button "Återkalla medlemskap":
+  - generic: Återkalla medlemskap

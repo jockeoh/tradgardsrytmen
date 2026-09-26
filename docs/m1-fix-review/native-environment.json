@@ -1,0 +1,9 @@
+{
+  "xcode_select": "/Library/Developer/CommandLineTools",
+  "simctl": "xcrun: error: unable to find utility \"simctl\", not a developer tool or in PATH",
+  "adb": null,
+  "emulator": null,
+  "android_sdk_exists": false,
+  "physical_ios": "not tested",
+  "physical_android": "not tested"
+}

@@ -1,0 +1,14 @@
+- generic: TRÄDGÅRDSRYTMEN
+- generic: Lokal förhandsvisning · endast exempeldata
+- heading "Dina trädgårdar" [level=1]
+- generic: Alex · provkonto
+- generic: Alex balkong
+- generic: Ägare
+- button "Öppna Alex balkong":
+  - generic: Öppna Alex balkong
+- button "Skapa trädgård":
+  - generic: Skapa trädgård
+- button "Byt konto / logga ut":
+  - generic: Byt konto / logga ut
+- button "Visa provverktyg":
+  - generic: Visa provverktyg

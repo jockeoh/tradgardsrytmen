@@ -1,0 +1,14 @@
+- generic: TRÄDGÅRDSRYTMEN
+- generic: Lokal förhandsvisning · endast exempeldata
+- button "Tillbaka":
+  - generic: Tillbaka
+- heading "Samla fallfrukt" [level=1]
+- generic: Utförd · 2026-09-26
+- generic: Känn efter en bit ner i jorden innan du vattnar.
+- generic: Sparad anteckning
+- generic: Lokal anteckning som ska bevaras
+- generic: Utförd 2026-09-26 12:52:58
+- button "Visa detaljer":
+  - generic: Visa detaljer
+- button "Visa provverktyg":
+  - generic: Visa provverktyg

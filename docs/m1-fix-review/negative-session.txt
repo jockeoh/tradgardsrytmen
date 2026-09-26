@@ -1,0 +1,25 @@
+✖ automatic replay at 604800001 ms checks age immediately before transport (5.051625ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 87.532375
+
+✖ failing tests:
+
+test at tests/client.test.ts:8:13807
+✖ automatic replay at 604800001 ms checks age immediately before transport (5.051625ms)
+  AssertionError [ERR_ASSERTION]: Missing expected rejection.
+      at async TestContext.<anonymous> (/private/tmp/tradgardsrytmen-m1-fixes-20260926/negative-control/tests/client.test.ts:523:39)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: /stämmas av/,
+    operator: 'rejects',
+    diff: 'simple'
+  }

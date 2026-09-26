@@ -1,0 +1,15 @@
+- generic: TRÄDGÅRDSRYTMEN
+- generic: Lokal förhandsvisning · endast exempeldata
+- heading "Dina trädgårdar" [level=1]
+- alert: Resursen är inte tillgänglig. Välj trädgård igen för att uppdatera din åtkomst.
+- generic: Kim · provkonto
+- generic: Sommarstugan
+- generic: Ägare
+- button "Öppna Sommarstugan":
+  - generic: Öppna Sommarstugan
+- button "Skapa trädgård":
+  - generic: Skapa trädgård
+- button "Byt konto / logga ut":
+  - generic: Byt konto / logga ut
+- button "Visa provverktyg":
+  - generic: Visa provverktyg

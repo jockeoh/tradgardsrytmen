@@ -6,7 +6,9 @@ DURABLE_JOBS=1; OIDC är fortsatt av. Grön CI, terminal deploystatus,
 verklig backup/återläsning och autentiserad HTTP är verifierade.
 Se [driftresultat och operatörsrutin](p3-activation.md).
 
-Närmaste kvarvarande leveranser är M1 och L1, därefter I1. Privat aktivering
+M1 har en separat lokal rättningskopia med tre granskningsfynd åtgärdade, redo för ny granskning
+(se [M1-överlämning](m1-handoff.md)). Användaren har därefter beställt commit/push till main. M1 är inte integrerad eller driftsatt.
+Närmaste steg är M1-granskning och L1, därefter I1. Privat aktivering
 betyder inte att native, fysisk telefon, riktig AI/push eller publik drift
 har verifierats. Historiska leverans-/granskningsavsnitt längre ned bevaras.
 
@@ -21,7 +23,7 @@ behöver inte vänta på köaktivering eller betalningar.
 | Klart: privat release | Kodrelease 1ee8e9e driftsatt först på SQLite, schema 0014; CI och autentiserad HTTP gröna. | Verklig backup/återläsning, oförändrade domänrader, kontrollerat underhållsfönster och klientmarkörer verifierade. Fysisk telefon och verkliga externa prov återstår separat. |
 | Klart: P3 PostgreSQL-cutover | PostgreSQL 17.11 aktivt på lokal socket med peer-auth. | 1 541 fältidentiska exporterade rader och återläst backup, sekvenser och oförändrad SQLite-källa verifierade. Dagliga lokala backuper aktiva; PITR/off-host och publik kapacitet återstår före bredare drift. |
 | Klart: P3 köaktivering | DURABLE_JOBS=1, worker och kökontroll aktiva. | Operatörskvitto för bekräftade oklara utfall implementerat och testat; oförändrad försökshistorik och inga automatiska omsändningar. Systemd/journal ger felsignal; aktiv extern larmkanal och publika belastningsprov återstår. |
-| 4. M1 | Ingen färdig Expo-leverans verifierad; status utanför kontrollerat underlag okänd. | Bygg eller lokalisera och granska Expo/TypeScript-klienten mot P1/P2-kontraktets fixtures. Navigation, kärnflöde, laddning/tomt/fel, utkast, paginering, två trädgårdar och kontoseparering. Låser upp I1. |
+| 4. M1 | Lokal Expo SDK 57/TypeScript-klient med separat granskningsfix på `task/m1-review-fixes`; originalet bevarat; Git-publicering till main beställd. | Färska 38 tester, typkontroll, lint, doctor 21/21 och export för webb/iOS/Android godkända; mobil webbpreview och tre regressioner verifierade. [Rättningsrapport](m1-fix-review/README.md). Syntetiska konton, trädgårdar, manuellt flöde, utkast, paginering, sena svar och fel. Simulator/fysisk telefon samt riktig transport återstår. Redigering/ångring saknar v1-endpoints. [Underlag och körning](m1-handoff.md). |
 | 4. L1 | Produktförslag finns; ingen färdig separat L1-leverans eller fastställd betal-/offlineomfattning verifierad. | Besluta målgrupp/marknad, betalande part, priser, AI-kvoter, delning, offlineomfattning och webbens framtid. Ger avgränsning för M2/B1/R1; leverantörsavtal och köp är separata externa beslut. |
 | 5. I1 och identitetsaktivering | Manuellt v1-serverflöde lokalt testat. Native och riktig Auth0-integration inte verifierade. | Efter M1: Auth0 EU-tenant/native client, verifierbara länkar, PKCE, säker tokenlagring, refresh/logout/revoke och administrativ subject-länkning. Två konton genomför hela manuella flödet på iOS/Android med bestående historik efter omstart/inloggning. Redovisa simulator och fysisk enhet separat. Extern konfiguration kräver godkännande. |
 | 6. Native AI | P3 ger bara privat webbkö, inga native v1 AI-endpoints. | Specificera/implementera v1 start/status/granskning/godkännande, uttryckligt datamedgivande och utfall/återförsök; koppla till driftklar P3 efter I1. Krävs om AI ingår i mobil v1; inga riktiga prov utan godkännande. |
@@ -46,7 +48,7 @@ Ytterligare kvarvarande server-/produktpunkter från kontrakten:
 - Följ upp beroendeuppdateringar via separata kompatibilitetskontroller.
   Byte till DRF är ett öppet teknikval, inte ett releasekrav.
 
-M1/L1-kontrollen omfattade projektets filer, lokala grenar/worktrees och den
+Den tidigare M1/L1-kontrollen (före M1-implementationen nedan) omfattade projektets filer, lokala grenar/worktrees och den
 relevanta uppgiften **Utvärdera apparkitektur**
 (`01a0d93e-072e-75a1-b72c-edf8aff60a3c`), där P1 startades men M1/L1 beskrevs
 som framtida spår. Ingen Expo-klient eller separat färdig L1-rapport hittades
@@ -283,3 +285,47 @@ konto-/domänrader fältidentiskt och verifierade SQLite-backup/återläsning f�
 och efter migrationen. Detaljer och begränsningar finns i
 [privat releasebedömning](private-release-review.md) och
 [transportgränsens rättningsrapport](transport-boundary-review-fixes.md).
+
+
+## M1: ursprungligt lokalt resultat 2026-09-26 (historik)
+
+Expo/TypeScript-klienten finns i `mobile/`, separat arbetskopia
+`/Users/joakimohman/Code/tradgardsrytmen-m1`, gren `task/m1-expo-manual`,
+bas `0b3eab4fa200ae09fc2c4cedff2b95ab4114525e`. Ingen commit/push eller
+deployment. Kanonisk checkout och tidigare arbetskopior är bevarade.
+
+- Expo Router: konto/trädgårdsval, skapa trädgård/växt/uppgift, detaljer,
+  klarmarkering och läsbar utförd/överhoppad/arkiverad historik.
+- Svenska mobilvyer, laddning/tomt/fel/fältfel, explicita återförsök,
+  cursorpaginering och kontextbundna minnesutkast.
+- Syntetisk utbytbar transport med två konton och tre trädgårdar.
+  Konto-/trädgårdsgeneration samt avbrott skyddar mot sena svar; idempotenta
+  skrivningar fryser kropp/nyckel vid oklart utfall. Konflikt visar färsk
+  status och bevarad anteckning innan ny uttrycklig åtgärd.
+- 17 klienttester godkända; inklusive läsande fältjämförelse mot aktuella
+  Python-serialiserare. Typkontroll/lint godkända, Expo doctor 21/21,
+  JavaScript/Hermes-export för webb, iOS och Android godkänd.
+- Webbpreview provad vid 320/390/820 px, med kärnflöde, utkast, historik,
+  konflikt, tappat svar och kontoseparering. Skärmbilder i `docs/m1-review/`.
+- Ingen iOS-simulator (full Xcode/simctl saknas), Android-emulator/SDK
+  eller fysisk telefon verifierad. Export är inte native körning.
+
+V1 saknar redigering och återöppning/ångring; inga sådana endpoints har
+uppfunnits och ingen backend ändrats. I1 behöver riktig transport, Auth0/PKCE,
+säker tokenlagring/refresh/revoke, beständig avstämning av oklara skrivutfall
+samt kontraktprov mot P2 och hela flödet på båda plattformarna. Klientens
+syntetiska behörighetsprov verifierar inte serverns skydd. L1/M2/AI/push/köp
+ligger kvar utanför leveransen. Se [M1-överlämning](m1-handoff.md).
+
+
+## M1: separat granskningsfix 2026-09-26
+
+Arbetskopia `tradgardsrytmen-m1-review-fixes`, gren `task/m1-review-fixes`,
+samma bas `0b3eab4`. Hela aktuella M1-diffen överfördes byteidentiskt innan
+ändringar; åtta tidigare arbetskopior inklusive index är bevarade.
+Gemensam formulärlivscykel, orörd/ändrad/tömd anteckning och spärr före varje
+återförsök är rättade. Färska 38/38 tester inkluderar monterade skärmar;
+webb-reproduktionerna och negativa kontroller mot originalkod är dokumenterade.
+Nästa steg är ny granskning av fixkopian. Ingen överföring till originalet,
+commit/push, release eller utökning till L1/I1/M2 ingår.
+[Resultat och verifieringsgränser](m1-fix-review/README.md).

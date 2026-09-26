@@ -1,0 +1,10 @@
+- generic: TRÄDGÅRDSRYTMEN
+- generic: Lokal förhandsvisning · endast exempeldata
+- button "Tillbaka":
+  - generic: Tillbaka
+- heading "Sparat" [level=1]
+- generic: Sparandet är klart. Dubbelros
+- button "Visa det sparade":
+  - generic: Visa det sparade
+- button "Börja ett nytt formulär":
+  - generic: Börja ett nytt formulär

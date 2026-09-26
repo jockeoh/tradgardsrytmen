@@ -1,0 +1,28 @@
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+react-test-renderer is deprecated. See https://react.dev/warnings/react-test-renderer
+✖ mounted completion untouched: 409, reload, remount and frozen replay preserve note meaning (62.411417ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 0
+ℹ fail 1
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 158.821334
+
+✖ failing tests:
+
+test at tests/screens.test.ts:2:5574
+✖ mounted completion untouched: 409, reload, remount and frozen replay preserve note meaning (62.411417ms)
+  AssertionError [ERR_ASSERTION]: button Jag har läst senaste status
+      at button (/private/tmp/tradgardsrytmen-m1-fixes-20260926/negative-control/tests/screens.test.ts:53:10)
+      at TestContext.<anonymous> (/private/tmp/tradgardsrytmen-m1-fixes-20260926/negative-control/tests/screens.test.ts:148:15)
+      at async Test.run (node:internal/test_runner/test:1389:7)
+      at async startSubtestAfterBootstrap (node:internal/test_runner/harness:387:3) {
+    generatedMessage: false,
+    code: 'ERR_ASSERTION',
+    actual: undefined,
+    expected: true,
+    operator: '==',
+    diff: 'simple'
+  }

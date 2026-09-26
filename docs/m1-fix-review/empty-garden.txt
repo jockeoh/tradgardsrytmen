@@ -1,0 +1,14 @@
+- generic: TRÄDGÅRDSRYTMEN
+- generic: Lokal förhandsvisning · endast exempeldata
+- button "Tillbaka":
+  - generic: Tillbaka
+- heading "Sommarstugan" [level=1]
+- button "Att göra":
+  - generic: Att göra
+- button "Växter" [active]:
+  - generic: Växter
+- button "Historik":
+  - generic: Historik
+- button "Lägg till växt":
+  - generic: Lägg till växt
+- generic: Inga växter ännu. Lägg till en växt för att komma igång.

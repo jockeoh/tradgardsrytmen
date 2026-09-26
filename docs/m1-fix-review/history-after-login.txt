@@ -1,0 +1,14 @@
+- generic: TRÄDGÅRDSRYTMEN
+- generic: Lokal förhandsvisning · endast exempeldata
+- button "Tillbaka":
+  - generic: Tillbaka
+- heading "Kontrollera jorden" [level=1]
+- generic: Utförd · 2026-09-26
+- generic: Känn efter en bit ner i jorden innan du vattnar.
+- generic: Sparad anteckning
+- generic: Ändrad i en annan klient.
+- generic: Utförd 2026-09-26 12:50:46
+- button "Visa detaljer":
+  - generic: Visa detaljer
+- button "Visa provverktyg":
+  - generic: Visa provverktyg

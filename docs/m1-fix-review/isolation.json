@@ -1,0 +1,71 @@
+{
+  "scope": "Tracked and non-ignored untracked files, raw index, HEAD, status and binary diff. Ignored runtime/cache directories excluded.",
+  "source_diff_sha256": "c3982bdaf32e14665428487bc30b48969a42c22cc651b62491c2fbb0a02193b8",
+  "transfer": "193 source files and complete binary diff hash matched before edits.",
+  "worktrees": {
+    "/Users/joakimohman/Code/tradgardsrytmen": {
+      "head": "0b3eab4fa200ae09fc2c4cedff2b95ab4114525e",
+      "index_sha256": "012e0df1ac656d264480f4d8c8eaeba0868fe5720a63226a5b72d364287a556e",
+      "binary_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file_count": 154,
+      "file_manifest_sha256": "73e7f3672316af68fa1a8eafdd9704d0f220cb43ab0582aa35c9203dac296f0a",
+      "final_comparison": "unchanged"
+    },
+    "/Users/joakimohman/Code/tradgardsrytmen-m1": {
+      "head": "0b3eab4fa200ae09fc2c4cedff2b95ab4114525e",
+      "index_sha256": "cc570641f3dc307a047c23cf1513935b2a3c091bc50aeb6aca4398f067870000",
+      "binary_diff_sha256": "c3982bdaf32e14665428487bc30b48969a42c22cc651b62491c2fbb0a02193b8",
+      "file_count": 193,
+      "file_manifest_sha256": "5a25475bfcc30a78c48068123bfabae84851d895f8e55e5b8c5976a8221e2212",
+      "final_comparison": "unchanged"
+    },
+    "/Users/joakimohman/Code/tradgardsrytmen-p1": {
+      "head": "17100162de586abe297dddc1f75c2ec2296885cb",
+      "index_sha256": "ce0339242484863a5d6e037eb135d3994efe274fca2e3246ca5207aa0dc17eca",
+      "binary_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file_count": 102,
+      "file_manifest_sha256": "9a55f9ad4c78412f9d7fa5afa0bec628e0dedc1bec8c6a56826aea1103d807d7",
+      "final_comparison": "unchanged"
+    },
+    "/Users/joakimohman/Code/tradgardsrytmen-p123-review-fixes/jobs-integration": {
+      "head": "0b3eab4fa200ae09fc2c4cedff2b95ab4114525e",
+      "index_sha256": "37eb51d78bcf0aaa5d523d2cfde925a0dbd7802ae2e4b7bb7f7590824a6c5975",
+      "binary_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file_count": 154,
+      "file_manifest_sha256": "73e7f3672316af68fa1a8eafdd9704d0f220cb43ab0582aa35c9203dac296f0a",
+      "final_comparison": "unchanged"
+    },
+    "/Users/joakimohman/Code/tradgardsrytmen-p123-review-fixes/legacy-transports": {
+      "head": "6606e76c8f30d42ff364c0ebfecfd10c13c5d31d",
+      "index_sha256": "e2c5a929b78de8f9d66eb6f16abf0ae6025be99cfb543e8edba4bf1d5342b6f3",
+      "binary_diff_sha256": "5b28e0899f0bef83ecd70d40ba730f96cdc33ac96ed25c7c4afa89c1dd5c3df2",
+      "file_count": 134,
+      "file_manifest_sha256": "c2f556a894f4e6dbd4f18824ea4c7db9a3c8bb3e06bbc20293b2b3ab57315bc2",
+      "final_comparison": "unchanged"
+    },
+    "/Users/joakimohman/Code/tradgardsrytmen-p123-review-fixes/web-context": {
+      "head": "6606e76c8f30d42ff364c0ebfecfd10c13c5d31d",
+      "index_sha256": "a0fec55f320847997833370bae344ab97713aead39de7b24112e350568addef7",
+      "binary_diff_sha256": "da266aa816599d83f2d9264354957fc29e31af492c6a8cd44eca72e81576e689",
+      "file_count": 134,
+      "file_manifest_sha256": "179099198979bf1bf8829e9f4555f265a48036c250b4698860e61a0899b9272e",
+      "final_comparison": "unchanged"
+    },
+    "/Users/joakimohman/Code/tradgardsrytmen-p2": {
+      "head": "6606e76c8f30d42ff364c0ebfecfd10c13c5d31d",
+      "index_sha256": "fa68f38085bb575b4a0e8e0e0e8bd35f3703ff4041eb9f9fbd7dfabf67ab07ae",
+      "binary_diff_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "file_count": 122,
+      "file_manifest_sha256": "f1dbc6f945493fbd9c4c7e8e7a5a49a9947827d0bc5883f8c4599a7c69fb50a2",
+      "final_comparison": "unchanged"
+    },
+    "/Users/joakimohman/Code/tradgardsrytmen-p3": {
+      "head": "6606e76c8f30d42ff364c0ebfecfd10c13c5d31d",
+      "index_sha256": "5903994fc26303cafd93f945f980730b21e108e67da23fc9bf3a5dd5bb63521d",
+      "binary_diff_sha256": "511d77edbc078692bb17d704f8bc970e93e3ab31788fb7d0090191d02cd969a2",
+      "file_count": 132,
+      "file_manifest_sha256": "4d8de4e8d9111012a33883305a9389a4dcde5d4f97b5e70111c2b9a551fbbc2e",
+      "final_comparison": "unchanged"
+    }
+  }
+}
