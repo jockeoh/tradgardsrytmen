@@ -1,5 +1,11 @@
 # Trädgårdsrytmen: produktmål för första mobilversionen
 
+**Aktuell drift 2026-09-26:** den privata releasen, PostgreSQL 17.11 och
+DURABLE_JOBS=1 är nu verifierat aktiva, med schema 0014 och OIDC av.
+[Driftbevis, backupgränser och operatörsrutin](p3-activation.md) ersätter
+äldre lokalstatus/ej aktiverat i de daterade avsnitten nedan.
+
+
 Status: 2026-09-26. P1/P2 finns på main; P3 och rättningar är lokalt verifierade
 men inte driftsatta. Privat SQLite-release är möjlig med de särskilda
 [releasevillkoren](private-release-review.md), oberoende av butikslanseringen.

@@ -1,5 +1,11 @@
 # Trädgårdsrytmen: målarkitektur
 
+**Aktuell drift 2026-09-26:** den privata releasen, PostgreSQL 17.11 och
+DURABLE_JOBS=1 är nu verifierat aktiva, med schema 0014 och OIDC av.
+[Driftbevis, backupgränser och operatörsrutin](p3-activation.md) ersätter
+äldre lokalstatus/ej aktiverat i de daterade avsnitten nedan.
+
+
 Status: aktuell lokal integration och målarkitektur, 2026-09-26.
 Produktomfattning finns i [produktmålen](product-v1.md); ordningen i [arbetsplanen](roadmap.md).
 

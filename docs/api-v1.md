@@ -1,5 +1,11 @@
 # API v1: kontrakt för mobilens första flöde
 
+**Aktuell drift 2026-09-26:** den privata releasen, PostgreSQL 17.11 och
+DURABLE_JOBS=1 är nu verifierat aktiva, med schema 0014 och OIDC av.
+[Driftbevis, backupgränser och operatörsrutin](p3-activation.md) ersätter
+äldre lokalstatus/ej aktiverat i de daterade avsnitten nedan.
+
+
 Status 2026-09-25: P2 implementerar kärnkontraktet nedan lokalt: `/me/`,
 garden-lista/skapa/detalj, plant-lista/skapa/detalj och task-lista/skapa/
 detalj/complete. Nuvarande `/api/` är samtidigt sessionsautentiserat och

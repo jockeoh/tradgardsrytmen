@@ -4,6 +4,47 @@ Användaren har nu uttryckligen beställt privat release samt PostgreSQL- och
 köaktivering. Äldre granskningsrapporter beskriver tillståndet före denna order.
 OIDC, publik drift, mobil och verkliga AI-testanrop ingår fortfarande inte.
 
+## Verifierat driftresultat
+
+Båda beställda stegen är genomförda. Kodrelease `1ee8e9e` nådde först privat
+SQLite med kö/OIDC av och schema 0014. Därefter aktiverades PostgreSQL 17.11
+och DURABLE_JOBS=1 efter separat slutbackup/import/återläsning. OIDC är av.
+
+- GitHub CI för kodreleasen: [releasegren](https://github.com/jockeoh/tradgardsrytmen/actions/runs/36232099933)
+  och [main](https://github.com/jockeoh/tradgardsrytmen/actions/runs/36232280485),
+  samtliga jobb success på Linux 3.12, macOS 3.13 och PostgreSQL.
+- Privat SQLite-release: terminal Result=success, ExecMainStatus=0, rätt SHA,
+  schema 0014 och fyra autentiserade HTTP-läsningar godkända med kö/OIDC av.
+- Verklig cutover: **1 541 exporterade rader fältidentiska** mellan fryst SQLite,
+  PostgreSQL och separat återläst PostgreSQL-backup. Sekvenser verifierade.
+  Canonical SHA-256 `63e7232eb855a5936746be700aee79d88e4704cee2cbbc67a2ee85228adfbdc5`.
+- Ursprunglig SQLite har oförändrad SHA-256
+  `6394bdbabd3fdbeb23e78df71f78d53cab4735a530349ba99f5a17277ce960a7`.
+  Källfil och konfiguration före bytet bevaras på servern; inga privata data
+  har hämtats till utvecklingsdatorn eller skickats till AI.
+- Efter bytet godkändes fyra autentiserade riktiga HTTP-läsningar både före
+  och efter köaktivering. Fortsatt 17 växter, 168 uppgifter, 43 förslag och
+  noll jobb. Temporär verifieringssession togs bort; ingen riktig analys begärdes.
+- Webb, PostgreSQL och samtliga sex app-timers är aktiva. Worker har kört
+  flera gånger med `Recovered 0; processed 0`. Kökontroll och första
+  PostgreSQL-backupen avslutades med Result=success/ExecMainStatus=0.
+- Privat HTTPS-hälsa och inloggningssida svarade 200 med normal
+  certifikatkontroll. Assetmarkör 20260926jobs1 och SW v10 är verifierade.
+  Browserprov gjordes med syntetiska data, inklusive 390 px utan overflow.
+
+Serverbevis: `/var/lib/tradgardsrytmen/p3-release/cutover-proof.json`.
+Slutbackup före bytet:
+`/var/lib/tradgardsrytmen/backups/tradgardsrytmen-20260926-092142-705937.sqlite3`.
+Återläst PostgreSQL-backup:
+`/var/lib/tradgardsrytmen/backups/tradgardsrytmen-20260926-092154-427436.dump`.
+Första backupservicekörning:
+`/var/lib/tradgardsrytmen/backups/tradgardsrytmen-20260926-092211-040751.dump`.
+
+Fysisk telefon, faktiskt visad push och ett riktigt AI-anrop är inte testade.
+Aktiveringen är verifierad utan att skapa sådana externa prov. Den ordinarie
+påminnelsetimern är återstartad och framtida uttryckliga AI-begäranden behandlas
+av worker med de befintliga behörighets- och osäkerhetsgränserna.
+
 ## Lokalt kompletterat inför aktivering
 
 Migration 0014 lägger till ett beständigt operatörskvitto och jobbstatus
@@ -48,7 +89,8 @@ PostgreSQL kräver en separat konfiguration med verifierad TLS.
 
 Daglig custom-format-backup, 14 dagars retention och verifierad återläsning.
 Privat återställningsmål är senaste backup, högst cirka 24 timmars dataförlust
-vid databasförlust. PITR och off-host-backup ingår inte i denna privata
+när lokal backup finns tillgänglig. Lokala backuper skyddar inte mot förlust
+av hela serverdisken. PITR och off-host-backup ingår inte i denna privata
 aktivering och ska bedömas före publik drift. Fryst SQLite-källa bevaras vid
 cutover; efter nya PostgreSQL-skrivningar krävs avstämning/återföring, aldrig
 ett enkelt byte tillbaka till den gamla filen.
@@ -63,6 +105,15 @@ ett enkelt byte tillbaka till den gamla filen.
 - Serverns riktiga backupkopia: 1 539 konto-/domänrader bevarade genom
   0012 → 0014; seed/cleanup gav inga domänändringar; SQLite-återläsning godkänd.
 - Verklig PostgreSQL-repetition, GitHub CI och terminal releaseverifiering
-  genomförs som efterföljande grindar. Detta avsnitt är inte driftbevis.
+  är genomförda enligt driftresultatet ovan.
 
 Källa för paketinstallation: [PostgreSQLs officiella Ubuntu-anvisning](https://www.postgresql.org/download/linux/ubuntu/).
+
+## Integritet
+
+Original-P3, baseline, web-context, legacy-transports, HANDOFF och
+oberoende granskningsreferenser är hashidentiska med startmanifestet.
+Main uppdaterades genom uttryckligt auktoriserad fast-forward-release.
+Lokala provdatabaser rensades och det lokala PostgreSQL-klustret stoppades.
+Integrationskopian bevarar hela den granskade leveransen plus den avgränsade
+operatörs-/releasekompletteringen; ingen gammal rättning har kastats bort.

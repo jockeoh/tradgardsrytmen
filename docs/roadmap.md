@@ -1,24 +1,14 @@
 # Trädgårdsrytmen: genomförandeplan
 
-Senare aktiveringsarbete: [privat P3-release och driftaktivering](p3-activation.md).
-Den daterade granskningen nedan är underlaget före aktiveringsbeställningen.
+Status 2026-09-26: **privat release, PostgreSQL-cutover och köaktivering är
+slutförda**. Kodrelease `1ee8e9e`, schema 0014, PostgreSQL 17.11 och
+DURABLE_JOBS=1; OIDC är fortsatt av. Grön CI, terminal deploystatus,
+verklig backup/återläsning och autentiserad HTTP är verifierade.
+Se [driftresultat och operatörsrutin](p3-activation.md).
 
-Status: 2026-09-26, efter samlad P3-granskning. P1/P2 finns på lokal main
-`6606e76c8f30d42ff364c0ebfecfd10c13c5d31d`; drift på samma revision är uppgiven
-i tidigare överlämning, inte återverifierad i denna dokumentationsgranskning.
-Hela P3 och rättningarna är implementerade och lokalt verifierade i
-`tradgardsrytmen-p123-review-fixes/jobs-integration`, fortfarande ocommittade.
-Ingen P3-release eller kö-/OIDC-aktivering har gjorts.
-
-**Privat SQLite-release: JA MED VILLKOR**, med DURABLE_JOBS=0 och OIDC av.
-Ingen ny konkret kodblockerare identifierades för detta driftalternativ.
-Produktionsinventering, återläsningsövning och kontrollerad release återstår;
-se [releasebedömning och exakta grindar](private-release-review.md).
-PostgreSQL, mobilappen och hela den publika roadmapen behöver inte vara klara
-för denna privata release. Migration 0013 ingår även med köflaggan av.
-
-[Produktmål](product-v1.md) och [arkitektur](architecture.md) styr omfattningen.
-Daterade leveransavsnitt längre ned är historik; aktuell status och restlista följer här.
+Närmaste kvarvarande leveranser är M1 och L1, därefter I1. Privat aktivering
+betyder inte att native, fysisk telefon, riktig AI/push eller publik drift
+har verifierats. Historiska leverans-/granskningsavsnitt längre ned bevaras.
 
 ## Prioriterad restlista och verifierad status
 
@@ -28,9 +18,9 @@ behöver inte vänta på köaktivering eller betalningar.
 
 | Prioritet/del | Nuvarande status | Kvar, nytta och beroenden |
 | --- | --- | --- |
-| 1. Privat release | P3 + rättningar lokalt implementerade; 254/254 Django per databas, 15/15 JS. Inte driftsatt. | Verifiera verklig databas/ägare/konfiguration, återläst backup och 0013 på skyddad kopia. Prova gammal/ny webbklient och säkra utkast. Släpp hela integrationsinnehållet i underhållsfönster, verifiera CI, terminal deploystatus, revision, schema, tjänster och historik. Kräver separat releasegodkännande och behörig operatör. |
-| 2. P3 PostgreSQL-cutover | Backend, backup och syntetisk övergång lokalt verifierade; inte aktiverade. | Besluta drift/version, TLS, privilegier, backup/PITR och larm. Anpassa/prova releaseflödet; nuvarande autodeploy stoppar avsiktligt. Öva verklig kopia, alla fält/sekvenser och återgång innan separat godkänt databasbyte. Ger grund för publik belastning. |
-| 3. P3 köaktivering | Jobb/försök, lease/recovery och transportskydd implementerade; flaggan av, ingen worker i drift. | Implementera/granska operatörens avstämning av verkligt uncertain med bevarad historik. Besluta worker/timer, larm, återstart och belastningsprov. Välj och verifiera driftbackend; kön har lokalt testats på båda. Aktivering och verkliga AI-/pushprov kräver separat godkännande. |
+| Klart: privat release | Kodrelease 1ee8e9e driftsatt först på SQLite, schema 0014; CI och autentiserad HTTP gröna. | Verklig backup/återläsning, oförändrade domänrader, kontrollerat underhållsfönster och klientmarkörer verifierade. Fysisk telefon och verkliga externa prov återstår separat. |
+| Klart: P3 PostgreSQL-cutover | PostgreSQL 17.11 aktivt på lokal socket med peer-auth. | 1 541 fältidentiska exporterade rader och återläst backup, sekvenser och oförändrad SQLite-källa verifierade. Dagliga lokala backuper aktiva; PITR/off-host och publik kapacitet återstår före bredare drift. |
+| Klart: P3 köaktivering | DURABLE_JOBS=1, worker och kökontroll aktiva. | Operatörskvitto för bekräftade oklara utfall implementerat och testat; oförändrad försökshistorik och inga automatiska omsändningar. Systemd/journal ger felsignal; aktiv extern larmkanal och publika belastningsprov återstår. |
 | 4. M1 | Ingen färdig Expo-leverans verifierad; status utanför kontrollerat underlag okänd. | Bygg eller lokalisera och granska Expo/TypeScript-klienten mot P1/P2-kontraktets fixtures. Navigation, kärnflöde, laddning/tomt/fel, utkast, paginering, två trädgårdar och kontoseparering. Låser upp I1. |
 | 4. L1 | Produktförslag finns; ingen färdig separat L1-leverans eller fastställd betal-/offlineomfattning verifierad. | Besluta målgrupp/marknad, betalande part, priser, AI-kvoter, delning, offlineomfattning och webbens framtid. Ger avgränsning för M2/B1/R1; leverantörsavtal och köp är separata externa beslut. |
 | 5. I1 och identitetsaktivering | Manuellt v1-serverflöde lokalt testat. Native och riktig Auth0-integration inte verifierade. | Efter M1: Auth0 EU-tenant/native client, verifierbara länkar, PKCE, säker tokenlagring, refresh/logout/revoke och administrativ subject-länkning. Två konton genomför hela manuella flödet på iOS/Android med bestående historik efter omstart/inloggning. Redovisa simulator och fysisk enhet separat. Extern konfiguration kräver godkännande. |

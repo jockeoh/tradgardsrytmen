@@ -1,5 +1,11 @@
 # Privat releasebedömning av samlad P3
 
+**Aktuell drift 2026-09-26:** den privata releasen, PostgreSQL 17.11 och
+DURABLE_JOBS=1 är nu verifierat aktiva, med schema 0014 och OIDC av.
+[Driftbevis, backupgränser och operatörsrutin](p3-activation.md) ersätter
+äldre lokalstatus/ej aktiverat i de daterade avsnitten nedan.
+
+
 Senare aktiveringsarbete: [privat P3-release och driftaktivering](p3-activation.md).
 Den daterade granskningen nedan är underlaget före aktiveringsbeställningen.
 

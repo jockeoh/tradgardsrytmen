@@ -1,5 +1,11 @@
 # Övergång till trädgårdsägarskap
 
+**Aktuell drift 2026-09-26:** den privata releasen, PostgreSQL 17.11 och
+DURABLE_JOBS=1 är nu verifierat aktiva, med schema 0014 och OIDC av.
+[Driftbevis, backupgränser och operatörsrutin](p3-activation.md) ersätter
+äldre lokalstatus/ej aktiverat i de daterade avsnitten nedan.
+
+
 Status 2026-09-26. P2 finns på main; driftstatus kommer från tidigare
 överlämning. Samlad P3 och kontexträttningar är lokalt verifierade i integration,
 inte driftsatta. Domänägarskap, sessionsinloggning, medlemskapskontroll,
