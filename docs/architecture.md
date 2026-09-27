@@ -1,22 +1,35 @@
 # Trädgårdsrytmen: målarkitektur
 
-**Aktuell drift 2026-09-26:** den privata releasen, PostgreSQL 17.11 och
-DURABLE_JOBS=1 är nu verifierat aktiva, med schema 0014 och OIDC av.
-[Driftbevis, backupgränser och operatörsrutin](p3-activation.md) ersätter
-äldre lokalstatus/ej aktiverat i de daterade avsnitten nedan.
+## Lokal implementation av hemmaappen, 2026-09-27
+
+Det beställda samlade paketet finns nu för granskning i den isolerade grenen
+`task/connected-home-app`: riktig HTTP, privat Django-Bearer-inloggning,
+beständig avstämningsjournal och mobilkontroller i CI. Auth0 är fortsatt
+ett framtida alternativ och inte ett förkrav för privat hemmabruk.
+Se [aktuell leverans, testmatris och aktiveringsgränser](home-app-delivery.md).
+Detta är inte publicerat på main eller produktionsaktiverat. Äldre status
+nedan beskriver läget före denna implementation. Native körning återstår.
 
 
-Status: aktuell lokal integration och målarkitektur, 2026-09-26.
-Produktomfattning finns i [produktmålen](product-v1.md); ordningen i [arbetsplanen](roadmap.md).
+## Aktuell inriktning 2026-09-27
+
+Användaren prioriterar nu en fungerande hemmaapp och en samlad större
+implementation framför fler små milstolpar. Nästa arbete är
+[ansluten hemmaapp](home-app-next.md). L1, betalningar, butik och publik
+flerkundslansering är framtida spår och blockerar inte detta arbete.
+
+Lokal main är verifierat ren på `77d81f56f9994d73874ddbf28f7decf97fbfc10d`
+före denna dokumentuppdatering. M1 inklusive granskningsrättningar finns där.
+Överlämningen anger push och grön GitHub CI 2026-09-26; fjärrläge och drift
+har inte återverifierats 2026-09-27. P3:s privata PostgreSQL-/köaktivering
+är dokumenterad i [driftunderlaget](p3-activation.md), inte nykontrollerad här.
+M1 är fortfarande syntetisk: riktig mobiltransport och native körning återstår.
 
 ## Nuvarande leverans och separata aktiveringssteg
 
-P1/P2 finns på main; tidigare driftuppgifter är inte återverifierade här.
-Samlad P3 + rättningar är lokalt verifierade men ocommittade och inte driftsatta.
-Privat SQLite med DURABLE_JOBS=0 och OIDC av är ett giltigt fortsatt driftläge,
-med [releasevillkor](private-release-review.md). Migration 0013 är obligatorisk
-för paketet även i detta läge. PostgreSQL och ködrift aktiveras separat.
-Diagrammet nedan beskriver målet, inte den nuvarande produktionstopologin.
+P1/P2/P3 och M1 finns i den lokala main-revisionen ovan. M1 är ännu inte
+ansluten till servern. Diagrammet beskriver målarkitekturen. Den tidigare
+privata driftaktiveringen redovisas separat i p3-activation.md.
 
 Webbens signerade sidkontext fryser konto/trädgård/exakt medlemskap. Gemensamt
 trädgårdslås serialiserar domänskrivningar, även äldre webb och v1. Synkron AI
@@ -27,7 +40,7 @@ Direkt/köad push bevarar bekräftad leveranshistorik. Transport och databas
 saknar gemensam atomär commit; operatörsavstämning behövs vid oklart utfall.
 Se [transportkontraktet](transport-boundary-review-fixes.md).
 
-M1-klient och färdigt L1-beslutsunderlag är inte verifierade. Native v1 AI/push,
+M1-klienten är levererad; separat färdigt L1-beslutsunderlag saknas. Native v1 AI/push,
 Auth0-aktivering, offline, betalningar och publik drift återstår enligt
 [prioriterad roadmap](roadmap.md). Modellstöd för flera medlemmar innebär inte
 färdig inbjudan, sista-ägare-överföring eller radering/export.
@@ -66,9 +79,8 @@ Mobilappen använder TypeScript. Skötselregler och behörigheter avgörs på
 servern; de ska inte kopieras till mobilappen. Delad kod mellan iOS och
 Android ersätter inte plattformsspecifika tester.
 
-P2:s lilla kärn-API använder Django direkt. P3 har lokalt implementerat
-PostgreSQL som explicit alternativ och en databasbaserad jobbkö med separat
-worker; båda väntar på releasebeslut. Se [P3-kontraktet](p3-durable-jobs.md).
+P2:s lilla kärn-API använder Django direkt. P3 implementerar PostgreSQL som explicit alternativ och en databasbaserad
+jobbkö med separat worker; privat aktivering dokumenterades 2026-09-26. Se [P3-kontraktet](p3-durable-jobs.md).
 Django REST Framework och betalningsleverantör är fortsatt öppna teknikval. Identitetsriktningen beslutades 2026-09-25: Auth0 i EU-region med
 Authorization Code + PKCE, verifierbara Universal Links/App Links, roterande
 refresh-token och återkallning. Beslutet aktiverar eller beställer ingen extern

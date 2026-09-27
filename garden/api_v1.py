@@ -311,3 +311,27 @@ def complete_task(request, garden_id, task_id):
         return 200, _task_json(locked)
 
     return idempotent_mutation(request, data, complete)
+
+
+@require_POST
+@api_authenticated
+def reconcile(request):
+    """Read a retained receipt without resending a mutation, including after day 7."""
+    from .api_support import request_hash
+    from .models import IdempotencyRecord
+    data, error = _body(request, {"path", "key", "body"}, {"path", "key", "body"})
+    if error:
+        return error
+    key = _uuid(data["key"])
+    if key is None or not isinstance(data["path"], str) or not isinstance(data["body"], dict):
+        return api_error("validation_error", "Kontrollera begäran.", 400)
+    record = IdempotencyRecord.objects.filter(user=request.api_user, method="POST", path=data["path"], key=key).first()
+    if record is None:
+        return JsonResponse({"state": "unknown", "message": "Inget sparat kvitto. Kontakta trädgårdens administratör med begäransnyckeln; skapa inte en ny begäran innan utfallet har kontrollerats."})
+    if record.request_hash != request_hash(data["body"]):
+        return api_error("idempotency_conflict", "Begäran stämmer inte med kvittot.", 409)
+    payload = record.response_body or {}
+    garden_id = payload.get("garden_id") or (payload.get("id") if data["path"] == "/api/v1/gardens/" else None)
+    if not garden_id or not _membership(request.api_user, garden_id):
+        return api_error("not_found", "Resursen finns inte.", 404)
+    return JsonResponse({"state": "confirmed", "result": payload})

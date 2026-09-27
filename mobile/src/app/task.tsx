@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { Text, View } from "react-native";
 import { Redirect, useLocalSearchParams } from "expo-router";
 import { Task, gardenPath } from "../api/contract";
-import { server, useSession } from "../core/runtime";
+import { demo, server, useSession } from "../core/runtime";
 import {
   Button,
   ErrorPanel,
@@ -176,12 +176,14 @@ function TaskScreen({ id }: { id: string }) {
               inte redigering eller ångring av utfört arbete.
             </Text>
           )}
-          <Button
-            title={test ? "Dölj provverktyg" : "Visa provverktyg"}
-            secondary
-            onPress={() => setTest(!test)}
-          />
-          {test && (
+          {demo && (
+            <Button
+              title={test ? "Dölj provverktyg" : "Visa provverktyg"}
+              secondary
+              onPress={() => setTest(!test)}
+            />
+          )}
+          {demo && test && (
             <View style={styles.card}>
               <Text style={styles.label}>Nästa anrop i provmiljön</Text>
               <Button

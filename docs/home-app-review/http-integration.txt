@@ -1,0 +1,13 @@
+
+> tradgardsrytmen-mobile@1.0.0 test:integration
+> node --import tsx --test tests/http.integration.ts
+
+✔ real Django: accounts, process death, history, conflict, revocation and expiry (1597.506166ms)
+ℹ tests 1
+ℹ suites 0
+ℹ pass 1
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 1675.720791

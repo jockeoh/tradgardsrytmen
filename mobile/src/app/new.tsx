@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { Text } from "react-native";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { Garden, Plant, Task, gardenPath } from "../api/contract";
@@ -33,6 +34,7 @@ export default function NewRoute() {
   );
 }
 function Form({ kind, plant }: { kind: string; plant?: string }) {
+  const [resetError, setResetError] = useState<unknown>();
   const session = useSession(),
     scope = session.scope(),
     form = "new:" + kind + ":" + (plant ?? "");
@@ -117,10 +119,13 @@ function Form({ kind, plant }: { kind: string; plant?: string }) {
               });
           }}
         />
+        <ErrorPanel error={resetError} />
         <Button
           title="Börja ett nytt formulär"
           secondary
-          onPress={() => session.startNew(scope, form)}
+          onPress={() => {
+            Promise.resolve(session.startNew(scope, form)).catch(setResetError);
+          }}
         />
       </Screen>
     );
@@ -136,8 +141,8 @@ function Form({ kind, plant }: { kind: string; plant?: string }) {
       back={() => (kind === "garden" ? router.replace("/") : backToGarden())}
     >
       <Text style={styles.muted}>
-        Utkastet sparas under navigation i den här sessionen. Utloggning och
-        omstart rensar det.
+        Utkastet finns kvar under navigation. När du trycker Spara bevaras
+        begäran även om appen startas om.
       </Text>
       {kind === "task" && (
         <>

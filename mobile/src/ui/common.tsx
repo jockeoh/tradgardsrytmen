@@ -13,7 +13,7 @@ import {
 import { useFocusEffect, router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { ApiError, Page, StaleContext } from "../api/contract";
-import { useSession } from "../core/runtime";
+import { demo, useSession } from "../core/runtime";
 export const styles = StyleSheet.create({
   safe: { flex: 1, backgroundColor: "#f6f5ef" },
   page: {
@@ -114,7 +114,9 @@ export function Screen({
         >
           <Text style={styles.eyebrow}>TRÄDGÅRDSRYTMEN</Text>
           <Text style={styles.muted}>
-            Lokal förhandsvisning · endast exempeldata
+            {demo
+              ? "Lokal förhandsvisning · endast exempeldata"
+              : "Din privata trädgård"}
           </Text>
           {back && <Button title="Tillbaka" secondary onPress={back} />}
           <Text accessibilityRole="header" style={styles.title}>
@@ -131,6 +133,7 @@ export function Field({
   value,
   onChange,
   multiline = false,
+  secureTextEntry = false,
   disabled = false,
   error,
 }: {
@@ -138,6 +141,7 @@ export function Field({
   value: string;
   onChange: (v: string) => void;
   multiline?: boolean;
+  secureTextEntry?: boolean;
   disabled?: boolean;
   error?: string;
 }) {
@@ -150,6 +154,13 @@ export function Field({
         editable={!disabled}
         onChangeText={onChange}
         multiline={multiline}
+        secureTextEntry={secureTextEntry}
+        autoCapitalize={
+          secureTextEntry || ["Serveradress", "Användarnamn"].includes(label)
+            ? "none"
+            : "sentences"
+        }
+        autoCorrect={!secureTextEntry}
         style={[
           styles.input,
           multiline && { minHeight: 108, textAlignVertical: "top" },

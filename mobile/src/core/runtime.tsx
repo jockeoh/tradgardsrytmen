@@ -2,7 +2,7 @@ import { createContext, useContext, useSyncExternalStore } from "react";
 import { randomUUID } from "expo-crypto";
 import { Session } from "./session";
 import { SyntheticServer } from "../api/synthetic";
-// Intentionally has no API base URL, fetch, tokens, analytics, storage, AI or push.
+export const demo = process.env.EXPO_PUBLIC_DEMO === "1";
 export const server = new SyntheticServer(randomUUID);
 export const session = new Session(randomUUID);
 const Context = createContext(session);

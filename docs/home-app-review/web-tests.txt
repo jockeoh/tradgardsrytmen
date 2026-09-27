@@ -1,0 +1,24 @@
+✔ empty current list stays neutral after completing a manual task (1.536583ms)
+✔ focus restoration follows identity, not old row position (0.390667ms)
+✔ complete and undo refresh the open item view (0.6405ms)
+✔ complete and undo refresh the open task view (0.318291ms)
+✔ undo feedback belongs to the modal top layer and does not expire (0.575042ms)
+✔ opening another dialog carries existing undo into that modal (0.279417ms)
+✔ browser-only data is scoped by account and garden (0.067208ms)
+✔ service worker never caches authenticated html or api data (0.036917ms)
+✔ research network retry keeps intent key and does not resend automatically (0.390333ms)
+✔ queued research does not claim proposal is ready (0.337042ms)
+✔ uncertain research clearly requires manual reconciliation (0.293458ms)
+✔ all API reads and writes use immutable page context despite a shared-cookie switch (0.413291ms)
+✔ failed form submission (401) retains original scoped draft and stays open (0.419458ms)
+✔ failed form submission (409) retains original scoped draft and stays open (0.229167ms)
+✔ a newly loaded different account or garden cannot restore the original form draft (0.634375ms)
+✔ reconciled research reports no new transmission and requires a new explicit action (0.2035ms)
+ℹ tests 16
+ℹ suites 0
+ℹ pass 16
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 40.694166

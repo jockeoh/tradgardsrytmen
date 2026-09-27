@@ -61,7 +61,7 @@ export type Request = {
   key?: string;
 };
 /** A transport instance is bound to ONE authenticated principal, never a mutable global token.
- * I1 will implement HTTP + secure identity lifecycle here. No HTTP implementation exists in M1. */
+ * HTTP and synthetic implementations share this boundary. */
 export interface Transport {
   request<T>(request: Request, signal: AbortSignal): Promise<T>;
 }

@@ -1,5 +1,9 @@
 # M1: lokal granskningsfix 2026-09-26
 
+> Status 2026-09-27: hela M1 inklusive rättningarna finns på lokal main i
+> `77d81f5`. Kopieadresser och opublicerad status längre ned är historiska.
+> Nästa arbete beskrivs i `docs/home-app-next.md` från projektroten.
+
 De tre verifierade fynden är rättade i `/Users/joakimohman/Code/tradgardsrytmen-m1-review-fixes`,
 gren `task/m1-review-fixes`, bas `0b3eab4fa200ae09fc2c4cedff2b95ab4114525e`.
 Resultatet är redo för ny lokal granskning. Ingen commit, push, merge,

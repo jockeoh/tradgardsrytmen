@@ -1,0 +1,5 @@
+Base: 77d81f56f9994d73874ddbf28f7decf97fbfc10d
+Worktree: /Users/joakimohman/Code/tradgardsrytmen-home-app
+Branch: task/connected-home-app
+Eight canonical documents still match their original SHA-256 transfer manifest after implementation.
+No commit, push or production operation performed.

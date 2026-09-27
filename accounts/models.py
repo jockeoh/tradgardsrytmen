@@ -22,3 +22,19 @@ class OIDCIdentity(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=["issuer", "subject"], name="unique_oidc_subject")]
+
+
+class MobileSession(models.Model):
+    """Private app credential. Only a hash is retained on the server."""
+
+    user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    token_hash = models.CharField(max_length=64, unique=True)
+    password_stamp = models.CharField(max_length=64)
+    expires_at = models.DateTimeField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+
+class MobileLoginAttempt(models.Model):
+    identity_hash = models.CharField(max_length=64, db_index=True)
+    address_hash = models.CharField(max_length=64, db_index=True)
+    created_at = models.DateTimeField(auto_now_add=True, db_index=True)

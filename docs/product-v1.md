@@ -1,22 +1,34 @@
 # Trädgårdsrytmen: produktmål för första mobilversionen
 
-**Aktuell drift 2026-09-26:** den privata releasen, PostgreSQL 17.11 och
-DURABLE_JOBS=1 är nu verifierat aktiva, med schema 0014 och OIDC av.
-[Driftbevis, backupgränser och operatörsrutin](p3-activation.md) ersätter
-äldre lokalstatus/ej aktiverat i de daterade avsnitten nedan.
+## Lokal implementation av hemmaappen, 2026-09-27
+
+Det beställda samlade paketet finns nu för granskning i den isolerade grenen
+`task/connected-home-app`: riktig HTTP, privat Django-Bearer-inloggning,
+beständig avstämningsjournal och mobilkontroller i CI. Auth0 är fortsatt
+ett framtida alternativ och inte ett förkrav för privat hemmabruk.
+Se [aktuell leverans, testmatris och aktiveringsgränser](home-app-delivery.md).
+Detta är inte publicerat på main eller produktionsaktiverat. Äldre status
+nedan beskriver läget före denna implementation. Native körning återstår.
 
 
-Status: 2026-09-26. P1/P2 finns på main; P3 och rättningar är lokalt verifierade
-men inte driftsatta. Privat SQLite-release är möjlig med de särskilda
-[releasevillkoren](private-release-review.md), oberoende av butikslanseringen.
-M1:s Expo-klient och separat färdig L1-leverans är inte verifierade i tillgängligt
-underlag. Auth0 EU är beslutad riktning men inte verifierat aktiverad.
-Läs tillsammans med [arkitekturen](architecture.md) och [arbetsplanen](roadmap.md).
+## Aktuell inriktning 2026-09-27
+
+Användaren prioriterar nu en fungerande hemmaapp och en samlad större
+implementation framför fler små milstolpar. Nästa arbete är
+[ansluten hemmaapp](home-app-next.md). L1, betalningar, butik och publik
+flerkundslansering är framtida spår och blockerar inte detta arbete.
+
+Lokal main är verifierat ren på `77d81f56f9994d73874ddbf28f7decf97fbfc10d`
+före denna dokumentuppdatering. M1 inklusive granskningsrättningar finns där.
+Överlämningen anger push och grön GitHub CI 2026-09-26; fjärrläge och drift
+har inte återverifierats 2026-09-27. P3:s privata PostgreSQL-/köaktivering
+är dokumenterad i [driftunderlaget](p3-activation.md), inte nykontrollerad här.
+M1 är fortfarande syntetisk: riktig mobiltransport och native körning återstår.
 
 ## Överenskommen riktning
 
-Utveckla dagens privata trädgårdsverktyg mot en tjänst som kan lanseras för
-både iPhone och Android. Behåll och vidareutveckla Django på servern; bygg
+Prioritera nu privat användning av mobilappen på iPhone och Android.
+En framtida tjänst och butikslansering är fortsatt en möjlighet. Behåll och vidareutveckla Django på servern; bygg
 mobilgränssnittet separat med React Native och Expo. Nuvarande webbapp får
 fortsätta fungera under övergången. Detta är inte ett beslut om publik drift
 eller om att alla föreslagna funktioner ska byggas omedelbart.

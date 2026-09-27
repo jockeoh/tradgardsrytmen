@@ -1,25 +1,57 @@
 # API v1: kontrakt för mobilens första flöde
 
-**Aktuell drift 2026-09-26:** den privata releasen, PostgreSQL 17.11 och
-DURABLE_JOBS=1 är nu verifierat aktiva, med schema 0014 och OIDC av.
-[Driftbevis, backupgränser och operatörsrutin](p3-activation.md) ersätter
-äldre lokalstatus/ej aktiverat i de daterade avsnitten nedan.
+## Privat hemmaapp: implementerat kontraktstillägg 2026-09-27
+
+Detta avsnitt ersätter Auth0-kravet **för den privata hemmaappen**. Den
+leverantörsneutrala OIDC-vägen nedan behålls som separat framtida alternativ.
+Se [leveransens lagrings-, CSRF- och återkallningspolicy](home-app-delivery.md).
+
+- Opt-in `TRADGARDSRYTMEN_PRIVATE_MOBILE_AUTH=1`; ingen publik registrering.
+- `POST /api/v1/auth/login/`, JSON `{username, password}` och
+  `X-Private-Mobile: 1`. Kräver HTTPS med DEBUG av. Browser-Origin måste
+  vara serverns egen eller exakt MOBILE_WEB_ORIGINS. Ger `{token,
+  expires_at, account: {id, display_name}}`. Befintlig Django-identitet används.
+- Token är opakt slumpat `home_...`, servern lagrar hash och bindning till
+  aktuell lösenordsversion. Absolut 14 dagar, ingen refresh eller rotation.
+  Alla domänanrop använder `Authorization: Bearer <token>`, inga cookies.
+  401 leder till ny login; samma kontos osäkra sparningar behålls.
+- `POST /api/v1/auth/logout/` med Bearer återkallar just detta token och är
+  idempotent. Lösenordsbyte, inaktivering och `revoke_mobile_sessions`
+  återkallar också. Native håller väntande återkallning i säker lagring när
+  nät saknas. Browserpreview lagrar token endast i minnet.
+- Login/logout och läsande reconcile undantas från krav på Idempotency-Key.
+  Domänmutationerna behåller det befintliga idempotenskontraktet.
+- `POST /api/v1/reconcile/`, `{path, key, body}`, autentiserad **läsning**.
+  Söker konto+POST+kanonisk path+key, jämför normaliserad kropp och aktuell
+  trädgårdsbehörighet. Ger `{state:"confirmed", result:<ursprungligt svar>}`
+  eller `{state:"unknown", message:...}` om inget kvitto finns. Fel kropp
+  ger 409, återkallat medlemskap 404. Skapar aldrig objekt eller nytt kvitto.
+  Unknown är inte bevis för att begäran aldrig sparats.
+- CORS tillåts endast för explicit listade origin, aldrig cookiecredentials.
+  Cookiebaserad privat webb och v1 fortsätter kräva Djangos CSRF-kontroll.
+  Alla v1-svar har `Cache-Control: no-store`.
+
+Klienten lagrar konto-/serveravskild fryst avsikt före första nätanropet och
+bekräftat resultat före ny avsikt. Samma konto efter processdöd återanvänder
+samma key/body; sjudagarsgränsen gäller före varje muterande försök.
+Reconcile får användas senare eftersom den aldrig omsänder mutationen.
+Kvitton gallras inte i detta paket. Se leveransen för konkret operatörsväg
+när kvitto saknas. Kontohistorik hämtas alltid från servern.
 
 
-Status 2026-09-25: P2 implementerar kärnkontraktet nedan lokalt: `/me/`,
-garden-lista/skapa/detalj, plant-lista/skapa/detalj och task-lista/skapa/
-detalj/complete. Nuvarande `/api/` är samtidigt sessionsautentiserat och
-trädgårdsavgränsat för den privata webben. M1 kan använda exemplen som stabila
-fixtures. Auth0 i EU-region är vald men ingen tenant eller klient är ännu
-skapad eller aktiverad, och ingen publik drift är godkänd.
+## Aktuell inriktning 2026-09-27
 
-## Status efter P3-granskning 2026-09-26
+Användaren prioriterar nu en fungerande hemmaapp och en samlad större
+implementation framför fler små milstolpar. Nästa arbete är
+[ansluten hemmaapp](home-app-next.md). L1, betalningar, butik och publik
+flerkundslansering är framtida spår och blockerar inte detta arbete.
 
-P2-kärnan finns på main. Samlad P3 och rättningar är lokalt verifierade,
-ocommittade och inte driftsatta. M1/I1 och verklig Auth0-aktivering är inte
-verifierade. Privat SQLite-release med kö/OIDC av bedöms separat i
-[releaseunderlaget](private-release-review.md); native AI/push tillkommer inte
-av att webbpaketet släpps. Roadmapen listar återstående aktiveringar.
+Lokal main är verifierat ren på `77d81f56f9994d73874ddbf28f7decf97fbfc10d`
+före denna dokumentuppdatering. M1 inklusive granskningsrättningar finns där.
+Överlämningen anger push och grön GitHub CI 2026-09-26; fjärrläge och drift
+har inte återverifierats 2026-09-27. P3:s privata PostgreSQL-/köaktivering
+är dokumenterad i [driftunderlaget](p3-activation.md), inte nykontrollerad här.
+M1 är fortfarande syntetisk: riktig mobiltransport och native körning återstår.
 
 ## Gemensamma regler
 
@@ -222,3 +254,17 @@ kräver manuell avstämning vid oklart utfall; samma klientnyckel ger inte någo
 beständig deduplicering där. I köläge återger samma nyckel jobbet och ett
 uncertain-jobb blockerar nya AI-avsikter för växten tills operatörsavstämning.
 Ingen leverantörsidempotens är verifierad.
+
+
+## Reviewrättningar: flikar och serverbyte
+
+Webbpreview kräver Web Locks (HTTPS eller localhost) för journalskrivning.
+Två flikar får inte skriva över varandras avsikter: den andra fliken stoppas
+före nätanrop och behöver ladda om/logga in för att läsa befintlig sparning.
+Äldre kvitton kan inte radera en annan begärans journalrad.
+
+Aktiv inloggning och väntande tokenåterkallningar sparas separat i samma
+säkra lagringspost på native. En otillgänglig gammal server blockerar inte
+ny login. Kön återförsöks vid appstart/återanslutning och utloggning; 401 på
+aktivt konto raderar inte andra servrars väntande återkallningar. Webbpreview
+har fortsatt enbart token/återkallningskö i flikens minne.

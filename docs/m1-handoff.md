@@ -1,9 +1,23 @@
-# M1: separat lokal granskningsfix, 2026-09-26
+# M1: levererad på main, aktuell överlämning 2026-09-27
 
-**Git-publicering 2026-09-26:** användaren har efter verifieringen beställt
-commit/push av hela M1-leveransen till main. Granskningsunderlaget nedan
-beskriver tillståndet före publiceringen. Serverrelease, riktig transport
-och mobilintegration aktiveras inte av denna Git-leverans.
+## Lokal implementation av hemmaappen, 2026-09-27
+
+Det beställda samlade paketet finns nu för granskning i den isolerade grenen
+`task/connected-home-app`: riktig HTTP, privat Django-Bearer-inloggning,
+beständig avstämningsjournal och mobilkontroller i CI. Auth0 är fortsatt
+ett framtida alternativ och inte ett förkrav för privat hemmabruk.
+Se [aktuell leverans, testmatris och aktiveringsgränser](home-app-delivery.md).
+Detta är inte publicerat på main eller produktionsaktiverat. Äldre status
+nedan beskriver läget före denna implementation. Native körning återstår.
+
+
+**Aktuell lokal verifiering:** M1 med samtliga rättningar finns på main i
+`77d81f5`. Push och grön CI 2026-09-26 rapporteras i överlämningen; ingen
+serverrelease ingick. Nästa paket är [ansluten hemmaapp](home-app-next.md).
+
+Resten av dokumentet beskriver historiska arbetskopior och verifieringar
+före publiceringen. Formuleringar som ”endast i fixkopian” och ”ingen commit”
+avser detta äldre läge, inte aktuell main.
 
 De tre verifierade fynden är rättade **endast i fixkopian**:
 `/Users/joakimohman/Code/tradgardsrytmen-m1-review-fixes`, gren

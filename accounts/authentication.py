@@ -23,6 +23,9 @@ def _jwks_client(url):
 
 
 def authenticate_bearer(token):
+    if token.startswith("home_"):
+        from .mobile import authenticate_mobile
+        return authenticate_mobile(token)
     if not (settings.OIDC_ISSUER and settings.OIDC_AUDIENCE and settings.OIDC_JWKS_URL):
         raise AuthenticationError("Mobilinloggning är inte konfigurerad.")
     try:

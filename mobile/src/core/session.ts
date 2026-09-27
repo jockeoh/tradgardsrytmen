@@ -1,3 +1,4 @@
+import { Journal, JournalConflict } from "./journal";
 import {
   ApiError,
   Me,
@@ -33,12 +34,15 @@ export class Session {
   private listeners = new Set<() => void>();
   private drafts = new Map<string, Record<string, string>>();
   private intents = new Map<string, Intent>();
+  private receiptKeys = new Map<string, string>();
   private outcomes = new Map<string, FormOutcome>();
   private revision = 0;
+  private resets = new Map<string, Promise<void>>();
   constructor(
     private uuid: () => string,
     private delay = (ms: number) => new Promise<void>((r) => setTimeout(r, ms)),
     private now = Date.now,
+    private journal?: Journal,
   ) {}
   subscribe = (listener: () => void) => {
     this.listeners.add(listener);
@@ -62,12 +66,94 @@ export class Session {
       this.drafts.clear();
       this.intents.clear();
       this.outcomes.clear();
+      this.receiptKeys.clear();
     }
     this.account = account;
     this.transport = transport;
     this.garden = null;
     this.notice = "";
     this.change();
+  }
+  async restore(account: Me, transport: Transport, journal: Journal) {
+    const epoch = this.epoch;
+    const rows = await journal.list(account.id);
+    if (epoch !== this.epoch) throw new StaleContext();
+    this.drafts.clear();
+    this.intents.clear();
+    this.outcomes.clear();
+    this.receiptKeys.clear();
+    this.login(account, transport);
+    this.journal = journal;
+    for (const [key, row] of rows) {
+      this.drafts.set(key, row.draft);
+      if (row.result !== undefined) {
+        this.outcomes.set(key, { result: row.result });
+        this.receiptKeys.set(key, row.request.key!);
+      } else
+        this.intents.set(key, {
+          request: row.request,
+          started: row.started,
+          uncertain: true,
+        });
+    }
+    this.publish();
+  }
+  unresolved() {
+    return [...this.intents].map(([key, intent]) => ({
+      key,
+      garden: JSON.parse(key)[1] as string | null,
+      form: JSON.parse(key)[2] as string,
+      request: intent.request,
+      started: intent.started,
+    }));
+  }
+  async reconcile(scope: Scope, form: string) {
+    this.assert(scope);
+    const key = this.key(scope, form),
+      intent = this.intents.get(key);
+    if (!intent || intent.pending) return;
+    try {
+      const receipt = await scope.transport.request<{
+        state: string;
+        result?: unknown;
+        message?: string;
+      }>(
+        {
+          method: "POST",
+          path: "/api/v1/reconcile/",
+          body: {
+            path: intent.request.path,
+            key: intent.request.key,
+            body: intent.request.body,
+          },
+        },
+        scope.signal,
+      );
+      this.assert(scope);
+      if (receipt.state !== "confirmed")
+        throw new Error(
+          receipt.message || "Utfallet måste kontrolleras av administratören.",
+        );
+      await this.journal?.put(key, {
+        request: intent.request,
+        started: intent.started,
+        draft: {},
+        result: receipt.result,
+      });
+      this.assert(scope);
+      this.intents.delete(key);
+      this.drafts.delete(key);
+      this.outcomes.set(key, { result: receipt.result });
+      this.receiptKeys.set(key, intent.request.key!);
+    } catch (error) {
+      if (this.current(scope)) {
+        this.outcomes.set(key, { error });
+        this.handleAccess(scope, error);
+      }
+      throw error;
+    } finally {
+      this.publish();
+    }
   }
   logout() {
     this.account = null;
@@ -76,6 +162,7 @@ export class Session {
     this.drafts.clear();
     this.intents.clear();
     this.outcomes.clear();
+    this.receiptKeys.clear();
     this.notice = "";
     this.change();
   }
@@ -144,9 +231,30 @@ export class Session {
     this.assert(scope);
     if (this.locked(scope, form))
       throw new Error("Pågående eller oklart sparande måste avslutas först.");
-    this.outcomes.delete(this.key(scope, form));
-    this.clearDraft(scope, form);
-    this.publish();
+    const clear = () => {
+      this.assert(scope);
+      this.outcomes.delete(this.key(scope, form));
+      this.receiptKeys.delete(this.key(scope, form));
+      this.clearDraft(scope, form);
+      this.publish();
+    };
+    if (this.journal) {
+      const key = this.key(scope, form);
+      const pending = this.resets.get(key);
+      if (pending) return pending;
+      const requestKey = this.receiptKeys.get(key);
+      if (!requestKey) {
+        clear();
+        return;
+      }
+      const reset = this.journal
+        .remove(key, requestKey)
+        .then(clear)
+        .finally(() => this.resets.delete(key));
+      this.resets.set(key, reset);
+      return reset;
+    }
+    clear();
   }
   acknowledgeReview(scope: Scope, form: string) {
     this.assert(scope);
@@ -161,7 +269,7 @@ export class Session {
     if (error.status === 401) {
       this.logout();
       this.notice =
-        "Provsessionen har gått ut. Välj konto på nytt. Lokala utkast har rensats.";
+        "Inloggningen har gått ut. Logga in igen. Osäkra sparningar finns kvar för samma konto.";
     }
     if (error.status === 404) {
       this.notice =
@@ -214,7 +322,24 @@ export class Session {
       this.intents.set(key, intent);
     }
     const captured = intent;
+    const journal = this.journal;
+    const draft = { ...this.draft(scope, form) };
     const work = async (): Promise<T> => {
+      // A durable intent MUST be committed locally before any network side effect.
+      if (journal) {
+        try {
+          await journal.put(key, {
+            request: captured.request,
+            started: captured.started,
+            draft,
+          });
+        } catch (error) {
+          // No transport has run for this attempt. A foreign durable intent wins.
+          if (error instanceof JournalConflict && this.current(scope) &&
+              this.intents.get(key) === captured) this.intents.delete(key);
+          throw error;
+        }
+      }
       // Initial attempt plus at most three bounded automatic retries. No retries after context change.
       for (let attempt = 0; ; attempt++) {
         this.assert(scope);
@@ -229,16 +354,25 @@ export class Session {
             scope.signal,
           );
           this.assert(scope);
+          if (journal)
+            await journal.put(key, {
+              request: captured.request,
+              started: captured.started,
+              draft: {},
+              result,
+            });
+          this.assert(scope);
           this.intents.delete(key);
           this.clearDraft(scope, form);
           this.outcomes.set(key, { result });
+          this.receiptKeys.set(key, captured.request.key!);
           return result;
         } catch (error) {
           this.assert(scope);
           const retryable =
             !(error instanceof ApiError) ||
             error.status === 429 ||
-            error.status === 503;
+            error.status >= 500;
           if (retryable) captured.uncertain = true;
           if (!retryable) {
             // A prior timeout may already have committed: don't discard that intention on a later 403/400.
@@ -247,8 +381,11 @@ export class Session {
               (error instanceof ApiError &&
                 error.status === 409 &&
                 ["version_conflict", "invalid_transition"].includes(error.code))
-            )
+            ) {
+              if (journal) await journal.remove(key, captured.request.key!);
+              this.assert(scope);
               this.intents.delete(key);
+            }
             this.outcomes.set(key, {
               error,
               reviewRequired:

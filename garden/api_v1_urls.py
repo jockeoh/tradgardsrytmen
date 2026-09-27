@@ -1,9 +1,13 @@
 from django.urls import path
 
 from . import api_v1
+from accounts import mobile
 
 
 urlpatterns = [
+    path("auth/login/", mobile.login),
+    path("auth/logout/", mobile.logout),
+    path("reconcile/", api_v1.reconcile),
     path("me/", api_v1.me),
     path("gardens/", api_v1.gardens),
     path("gardens/<uuid:garden_id>/", api_v1.garden_detail),

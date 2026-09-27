@@ -1,31 +1,44 @@
 # Trädgårdsrytmen: genomförandeplan
 
-Status 2026-09-26: **privat release, PostgreSQL-cutover och köaktivering är
-slutförda**. Kodrelease `1ee8e9e`, schema 0014, PostgreSQL 17.11 och
-DURABLE_JOBS=1; OIDC är fortsatt av. Grön CI, terminal deploystatus,
-verklig backup/återläsning och autentiserad HTTP är verifierade.
-Se [driftresultat och operatörsrutin](p3-activation.md).
+## Lokal implementation av hemmaappen, 2026-09-27
 
-M1 har en separat lokal rättningskopia med tre granskningsfynd åtgärdade, redo för ny granskning
-(se [M1-överlämning](m1-handoff.md)). Användaren har därefter beställt commit/push till main. M1 är inte integrerad eller driftsatt.
-Närmaste steg är M1-granskning och L1, därefter I1. Privat aktivering
-betyder inte att native, fysisk telefon, riktig AI/push eller publik drift
-har verifierats. Historiska leverans-/granskningsavsnitt längre ned bevaras.
+Det beställda samlade paketet finns nu för granskning i den isolerade grenen
+`task/connected-home-app`: riktig HTTP, privat Django-Bearer-inloggning,
+beständig avstämningsjournal och mobilkontroller i CI. Auth0 är fortsatt
+ett framtida alternativ och inte ett förkrav för privat hemmabruk.
+Se [aktuell leverans, testmatris och aktiveringsgränser](home-app-delivery.md).
+Detta är inte publicerat på main eller produktionsaktiverat. Äldre status
+nedan beskriver läget före denna implementation. Native körning återstår.
+
+
+## Aktuell inriktning 2026-09-27
+
+Användaren prioriterar nu en fungerande hemmaapp och en samlad större
+implementation framför fler små milstolpar. Nästa arbete är
+[ansluten hemmaapp](home-app-next.md). L1, betalningar, butik och publik
+flerkundslansering är framtida spår och blockerar inte detta arbete.
+
+Lokal main är verifierat ren på `77d81f56f9994d73874ddbf28f7decf97fbfc10d`
+före denna dokumentuppdatering. M1 inklusive granskningsrättningar finns där.
+Överlämningen anger push och grön GitHub CI 2026-09-26; fjärrläge och drift
+har inte återverifierats 2026-09-27. P3:s privata PostgreSQL-/köaktivering
+är dokumenterad i [driftunderlaget](p3-activation.md), inte nykontrollerad här.
+M1 är fortfarande syntetisk: riktig mobiltransport och native körning återstår.
 
 ## Prioriterad restlista och verifierad status
 
-Ordningen är rekommenderad, inte ett nytt beslut att aktivera externa tjänster.
-M1 och L1 kan göras parallellt med driftförberedelser; I1:s manuella flöde
-behöver inte vänta på köaktivering eller betalningar.
+Nästa beställda utvecklingspaket är ansluten hemmaapp enligt länken ovan.
+Tabellen bevarar den långsiktiga planen; driftuppgifterna avser 2026-09-26.
+L1 och extern identitetsaktivering är inte förkrav för lokal implementation.
 
 | Prioritet/del | Nuvarande status | Kvar, nytta och beroenden |
 | --- | --- | --- |
 | Klart: privat release | Kodrelease 1ee8e9e driftsatt först på SQLite, schema 0014; CI och autentiserad HTTP gröna. | Verklig backup/återläsning, oförändrade domänrader, kontrollerat underhållsfönster och klientmarkörer verifierade. Fysisk telefon och verkliga externa prov återstår separat. |
 | Klart: P3 PostgreSQL-cutover | PostgreSQL 17.11 aktivt på lokal socket med peer-auth. | 1 541 fältidentiska exporterade rader och återläst backup, sekvenser och oförändrad SQLite-källa verifierade. Dagliga lokala backuper aktiva; PITR/off-host och publik kapacitet återstår före bredare drift. |
 | Klart: P3 köaktivering | DURABLE_JOBS=1, worker och kökontroll aktiva. | Operatörskvitto för bekräftade oklara utfall implementerat och testat; oförändrad försökshistorik och inga automatiska omsändningar. Systemd/journal ger felsignal; aktiv extern larmkanal och publika belastningsprov återstår. |
-| 4. M1 | Lokal Expo SDK 57/TypeScript-klient med separat granskningsfix på `task/m1-review-fixes`; originalet bevarat; Git-publicering till main beställd. | Färska 38 tester, typkontroll, lint, doctor 21/21 och export för webb/iOS/Android godkända; mobil webbpreview och tre regressioner verifierade. [Rättningsrapport](m1-fix-review/README.md). Syntetiska konton, trädgårdar, manuellt flöde, utkast, paginering, sena svar och fel. Simulator/fysisk telefon samt riktig transport återstår. Redigering/ångring saknar v1-endpoints. [Underlag och körning](m1-handoff.md). |
-| 4. L1 | Produktförslag finns; ingen färdig separat L1-leverans eller fastställd betal-/offlineomfattning verifierad. | Besluta målgrupp/marknad, betalande part, priser, AI-kvoter, delning, offlineomfattning och webbens framtid. Ger avgränsning för M2/B1/R1; leverantörsavtal och köp är separata externa beslut. |
-| 5. I1 och identitetsaktivering | Manuellt v1-serverflöde lokalt testat. Native och riktig Auth0-integration inte verifierade. | Efter M1: Auth0 EU-tenant/native client, verifierbara länkar, PKCE, säker tokenlagring, refresh/logout/revoke och administrativ subject-länkning. Två konton genomför hela manuella flödet på iOS/Android med bestående historik efter omstart/inloggning. Redovisa simulator och fysisk enhet separat. Extern konfiguration kräver godkännande. |
+| 4. M1 | Expo SDK 57/TypeScript-klient med granskningsrättningar finns på main i `77d81f5`; originalet är bevarad referens. | Färska 38 tester, typkontroll, lint, doctor 21/21 och export för webb/iOS/Android godkända; mobil webbpreview och tre regressioner verifierade. [Rättningsrapport](m1-fix-review/README.md). Syntetiska konton, trädgårdar, manuellt flöde, utkast, paginering, sena svar och fel. Simulator/fysisk telefon samt riktig transport återstår. Redigering/ångring saknar v1-endpoints. [Underlag och körning](m1-handoff.md). |
+| Senare: L1 | Produktförslag finns; ingen färdig separat L1-leverans eller fastställd betal-/offlineomfattning verifierad. | Besluta målgrupp/marknad, betalande part, priser, AI-kvoter, delning, offlineomfattning och webbens framtid. Ger avgränsning för M2/B1/R1; leverantörsavtal och köp är separata externa beslut. |
+| Nästa: I1 för hemmaappen | Manuellt v1-serverflöde lokalt testat. Native och riktig Auth0-integration inte verifierade. | Samlat paket: riktig transport, enkel säker privat inloggning, bestående sparningar och native provning. Auth0 är tidigare målval; bedöm enklare privat inloggning enligt home-app-next.md. Två konton genomför hela manuella flödet på iOS/Android med bestående historik efter omstart/inloggning. Redovisa simulator och fysisk enhet separat. Extern konfiguration kräver godkännande. |
 | 6. Native AI | P3 ger bara privat webbkö, inga native v1 AI-endpoints. | Specificera/implementera v1 start/status/granskning/godkännande, uttryckligt datamedgivande och utfall/återförsök; koppla till driftklar P3 efter I1. Krävs om AI ingår i mobil v1; inga riktiga prov utan godkännande. |
 | 6. M2 | Offline och native push inte verifierade som implementerade. | Efter I1 + L1: lokal arbetslista och beslutad synkkö, versionskonflikter, idempotens, kontoavskild lagring/rensning. Implementera native push med mottagare/tidszon/deduplicering och fysisk enhetsprovning. Full offline-redigering är inte beslutad v1. |
 | 7. B1 | Köp/tillgång inte verifierade som implementerade. | Efter I1 + L1: välj köptransport, serververifierad tillgång, köp/återställning/förnyelse/uppsägning/återbetalning och deduplicerade händelser. Butikskonton, avtal, betalningar och publicering kräver separata beslut. Villkorligt: bara nödvändigt för betald lansering. |

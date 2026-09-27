@@ -66,3 +66,27 @@ jobs:
       - run: python manage.py check
       - run: python manage.py makemigrations --check --dry-run
       - run: python manage.py test --noinput
+
+  mobile:
+    runs-on: ubuntu-latest
+    env:
+      OPENAI_API_KEY: ''
+      EXPO_NO_TELEMETRY: '1'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22.13.1'
+          cache: npm
+          cache-dependency-path: mobile/package-lock.json
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install -r requirements.txt
+      - run: npm ci
+        working-directory: mobile
+      - run: npm run typecheck && npm run lint && npm test && npm run test:integration
+        working-directory: mobile
+      - run: npm run export
+        working-directory: mobile

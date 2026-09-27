@@ -1,0 +1,32 @@
+Verifieringssammanställning efter reviewrättningar, 2026-09-27
+Arbetskopia: tradgardsrytmen-home-app
+Gren: task/connected-home-app
+
+PASS npm run typecheck
+PASS npm run lint (EXPO_NO_TELEMETRY=1)
+PASS npm test: 54 tester
+PASS npm run test:integration: 1 verkligt Django/HTTP-prov, separata processavslut
+PASS npm run export -- --output-dir /tmp/home-app-fixed-export: webb, iOS, Android
+PASS manage.py test --settings=config.p3_sqlite_test_settings --noinput: 270 tester
+PASS python -m unittest discover -s tests -p 'test_*.py': 4 tester
+PASS node --test tests/*.test.cjs: 16 tester
+PASS git diff --check
+
+Nya negativa prov:
+- Två samtidiga Session/StoredJournal mot delad lagring: endast en begäransnyckel skickas.
+- Omstart återställer vinnarens oförändrade nyckel/kropp.
+- Ett gammalt bekräftat formulär får inte radera annan fliks senare avsikt.
+- Retry får inte skriva över ett bekräftat kvitto med ett osäkert resultat.
+- Webbens faktiska lagringsadapter använder samma lås för konkurrerande journaler.
+- Saknat Web Locks-stöd stoppar mutation före nätanrop.
+- Äldre pendingLogout-format bevaras vid ny login på annan server.
+- Omstart fungerar med aktivt nytt konto och offline gammal server.
+- Senare återkallning tar bara bort väntande token, inte aktiv identitet.
+- 401 för aktiv identitet bevarar andra servrars väntande återkallningar.
+- Fel vid säker lagring före kontobyte behåller ursprunglig inloggning.
+
+Provgränser:
+Flikproven använder separata Session-objekt/delad testlagring samt webbens
+lagringsadapter med simulerad LockManager, inte två riktiga browserflikar.
+Ingen fysisk telefon eller simulator. Export är inte native körning.
+GitHub CI följs efter push. Ingen produktionsåtgärd eller extern AI/push.
