@@ -37,7 +37,7 @@ läget visar provkonton och felinjektion. Standardläget använder riktig HTTP.
 
 ## Kontroller
 
-Node >=22.13, Python 3.12 med projektets requirements:
+Node 22.15+ (CI använder senaste 22.x) eller Node 24+, Python 3.12 med projektets requirements:
 
 ```sh
 npm run typecheck

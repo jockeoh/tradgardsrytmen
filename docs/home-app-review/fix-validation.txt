@@ -30,3 +30,9 @@ Flikproven använder separata Session-objekt/delad testlagring samt webbens
 lagringsadapter med simulerad LockManager, inte två riktiga browserflikar.
 Ingen fysisk telefon eller simulator. Export är inte native körning.
 GitHub CI följs efter push. Ingen produktionsåtgärd eller extern AI/push.
+
+Första GitHub-körningen upptäckte ett äldre CI-versionsfel: Node 22.13.1
+saknar module.registerHooks som de befintliga skärmtesterna använder.
+Mobiljobbet använder nu senaste 22.x; engines och README anger 22.15+
+eller 24+. Stödet infördes i Node 22.15:
+https://nodejs.org/en/blog/release/v22.15.0

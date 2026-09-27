@@ -42,5 +42,8 @@
     "export": "expo export --platform all",
     "test:integration": "node --import tsx --test tests/http.integration.ts"
   },
-  "private": true
+  "private": true,
+  "engines": {
+    "node": "^22.15.0 || >=24.0.0"
+  }
 }
