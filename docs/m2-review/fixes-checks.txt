@@ -1,0 +1,22 @@
+COMMAND: python --version
+Python 3.12.14
+EXIT: 0
+COMMAND: python -m unittest discover -s tests -p test_*.py
+....
+----------------------------------------------------------------------
+Ran 4 tests in 2.834s
+
+OK
+EXIT: 0
+COMMAND: python manage.py check --settings=config.p3_sqlite_test_settings
+System check identified no issues (0 silenced).
+EXIT: 0
+COMMAND: python manage.py makemigrations --check --dry-run --settings=config.p3_sqlite_test_settings
+No changes detected
+EXIT: 0
+node --check garden/static/garden/offline-core.js: 0
+node --check garden/static/garden/offline-session.js: 0
+node --check garden/static/garden/worklist.js: 0
+node --check garden/static/garden/sw.js: 0
+node --check tests/pwa-http-driver.cjs: 0
+git diff --check: 0

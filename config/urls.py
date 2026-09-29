@@ -1,8 +1,13 @@
 from django.contrib.auth import views as auth_views
 from django.urls import include, path
-from garden import views
+from garden import views, pwa
 
 urlpatterns = [
+    path("worklist/", pwa.shell),
+    path("api/pwa/context/", pwa.context),
+    path("api/pwa/snapshot/", pwa.snapshot),
+    path("api/pwa/tasks/<uuid:task_id>/complete/", pwa.complete),
+    path("api/pwa/reconcile/", pwa.reconcile),
     path("health/", views.health, name="health"),
     path("sw.js", views.service_worker, name="service-worker"),
     path("accounts/login/", auth_views.LoginView.as_view(template_name="registration/login.html"), name="login"),

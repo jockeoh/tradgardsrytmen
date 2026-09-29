@@ -1,0 +1,13 @@
+- main:
+  - navigation:
+    - link "Trädgårdsrytmen":
+      - /url: /
+    - button "Logga ut" [active]
+  - heading "Arbetslista" [level=1]
+  - paragraph
+  - status: Utloggad lokalt. Anslut för att avsluta serversessionen.
+  - paragraph
+  - button "Slutför utloggning"
+  - region "Väntar på synkning"
+  - region "Att göra"
+  - generic "Om offline"

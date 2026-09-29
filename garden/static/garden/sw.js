@@ -1,10 +1,14 @@
-const CACHE = "tradgardsrytmen-v10";
-const ASSETS = ["/static/garden/app.css?v=20260926jobs1", "/static/garden/app.js?v=20260926jobs1", "/static/garden/images/garden-hero.jpg", "/static/garden/icons/icon.svg", "/static/garden/manifest.webmanifest"];
+const CACHE = "tradgardsrytmen-v16-m2";
+const ASSETS = ["/static/garden/worklist.html", "/static/garden/worklist.css?v=m2-6", "/static/garden/offline-core.js?v=m2-6", "/static/garden/worklist.js?v=m2-6", "/static/garden/offline-session.js?v=m2-6", "/static/garden/app.css?v=20260926jobs1", "/static/garden/app.js?v=20260926jobs1", "/static/garden/images/garden-hero.jpg", "/static/garden/icons/icon.svg", "/static/garden/manifest.webmanifest"];
 self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS))));
-self.addEventListener("activate", event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k !== CACHE).map(k => caches.delete(k))))));
+self.addEventListener("activate", event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith("tradgardsrytmen-") && k !== CACHE).map(k => caches.delete(k))))));
 self.addEventListener("fetch", event => {
   if (event.request.method !== "GET") return;
   const url = new URL(event.request.url);
+  if (url.origin === self.location.origin && event.request.mode === "navigate" && (url.pathname === "/worklist/" || url.pathname === "/")) {
+    event.respondWith(fetch(event.request).catch(() => caches.open(CACHE).then(c => c.match("/static/garden/worklist.html"))));
+    return;
+  }
   if (url.origin !== self.location.origin || !url.pathname.startsWith("/static/")) return;
   event.respondWith(caches.match(event.request).then(cached => cached || fetch(event.request).then(response => {
     if (response.ok) caches.open(CACHE).then(cache => cache.put(event.request, response.clone()));

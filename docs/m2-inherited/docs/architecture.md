@@ -1,16 +1,5 @@
 # Trädgårdsrytmen: målarkitektur
 
-## Lokal implementation av hemmaappen, 2026-09-27
-
-Det beställda samlade paketet finns nu för granskning i den isolerade grenen
-`task/connected-home-app`: riktig HTTP, privat Django-Bearer-inloggning,
-beständig avstämningsjournal och mobilkontroller i CI. Auth0 är fortsatt
-ett framtida alternativ och inte ett förkrav för privat hemmabruk.
-Se [aktuell leverans, testmatris och aktiveringsgränser](home-app-delivery.md).
-Detta är inte publicerat på main eller produktionsaktiverat. Äldre status
-nedan beskriver läget före denna implementation. Native körning återstår.
-
-
 ## Aktuell inriktning 2026-09-27
 
 Användaren prioriterar nu en fungerande hemmaapp och en samlad större
@@ -189,18 +178,3 @@ mikroservicar utan ett faktiskt behov.
 
 Referenserna användes vid arkitekturdiskussionen. Butiksregler är föränderliga
 och ska verifieras inför implementation och lansering.
-
-## Lokal M2-PWA-implementation 2026-09-29
-
-`/worklist/` är ett identitetsfritt PWA-skal, länkat från befintlig webb.
-Service workern lagrar endast skal och statiska resurser. Sessionsbundet
-innehåll och beständiga manuella avsikter hålls separat i en versionsmärkt
-lokal journal, avgränsad till origin/konto/trädgård/exakt medlemskap och
-serialiserad med Web Locks. Ingen kö körs av service workern.
-
-En sessionsadapter återanvänder v1:s idempotenta klarmarkering och läsande
-avstämning. Gamla webbens AI/push-/redigeringsvägar ändras inte. En
-icke-hemlig cookie roterar vid login/logout/trädgårdsbyte även från äldre
-webbsidor; den ger aldrig serverbehörighet. Offlineutloggning spärrar lokalt
-innan väntan på pågående nätanrop och bevarar osäkra avsikter. Se
-[M2-PWA:s lagrings-, versions- och verifieringskontrakt](m2-pwa.md).

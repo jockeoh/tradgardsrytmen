@@ -1,0 +1,11 @@
+Creating test database for alias 'default'...
+/tmp/m2-pwa-py313/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /Users/joakimohman/Code/tradgardsrytmen-m2-pwa/staticfiles/
+  mw_instance = middleware(adapted_handler)
+.
+----------------------------------------------------------------------
+Ran 1 test in 0.685s
+
+OK
+Destroying test database for alias 'default'...
+Found 1 test(s).
+System check identified no issues (0 silenced).

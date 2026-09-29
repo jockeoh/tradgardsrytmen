@@ -14,6 +14,8 @@
   <link rel="apple-touch-icon" href="{% static 'garden/icons/icon-192.png' %}">
   <link rel="stylesheet" href="{% static 'garden/app.css' %}?v=20260926jobs1">
   <title>Trädgårdsrytmen · Din trädgård, i din takt</title>
+  <script src="/static/garden/offline-core.js?v=m2-6" defer></script>
+  <script src="/static/garden/offline-session.js?v=m2-6" defer></script>
 </head>
 <body data-web-context="{{ web_context }}" data-account-id="{{ account_id }}" data-garden-id="{{ garden_id }}">
   {% include 'garden/symbols.html' %}
@@ -36,7 +38,7 @@
   <div class="app-shell">
     <header class="topbar">
       <div class="breadcrumb"><svg class="icon"><use href="#i-sprout"/></svg><span id="garden-name">Min trädgård</span><span class="breadcrumb-slash">/</span><h1 id="view-title">Överblick</h1></div>
-      <div class="topbar-actions"><button class="search-trigger" id="search-trigger" aria-label="Sök i trädgården"><svg class="icon"><use href="#i-search"/></svg><span>Sök i din trädgård</span><kbd>⌘ K</kbd></button><button class="icon-button mobile-settings" data-view="settings" aria-label="Inställningar"><svg class="icon"><use href="#i-settings"/></svg></button><button class="garden-avatar" data-view="settings" aria-label="Öppna trädgårdsprofil"><svg class="icon"><use href="#i-sprout"/></svg></button></div>
+      <div class="topbar-actions"><a class="text-button" href="/worklist/">Arbetslista · offline</a><button class="search-trigger" id="search-trigger" aria-label="Sök i trädgården"><svg class="icon"><use href="#i-search"/></svg><span>Sök i din trädgård</span><kbd>⌘ K</kbd></button><button class="icon-button mobile-settings" data-view="settings" aria-label="Inställningar"><svg class="icon"><use href="#i-settings"/></svg></button><button class="garden-avatar" data-view="settings" aria-label="Öppna trädgårdsprofil"><svg class="icon"><use href="#i-sprout"/></svg></button></div>
     </header>
     <main id="main" tabindex="-1">
       <div id="loading" class="loading-state" role="status"><span class="spinner"></span><p>En stund, vi hämtar din trädgård …</p></div>

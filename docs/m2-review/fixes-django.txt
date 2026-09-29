@@ -1,0 +1,62 @@
+Creating test database for alias 'default'...
+Destroying old test database for alias 'default'...
+Method Not Allowed (OPTIONS): /api/v1/auth/login/
+.Forbidden: /api/v1/auth/login/
+Forbidden: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Too Many Requests: /api/v1/auth/login/
+.Not Found: /api/v1/auth/login/
+Forbidden (CSRF cookie not set.): /api/v1/gardens/
+Forbidden: /api/v1/gardens/
+.Unauthorized: /api/v1/me/
+.Unauthorized: /api/v1/me/
+Unauthorized: /api/v1/me/
+Unauthorized: /api/v1/me/
+Unauthorized: /api/v1/me/
+.Unauthorized: /api/v1/me/
+Unauthorized: /api/v1/me/
+./tmp/m2-pwa-py313/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /Users/joakimohman/Code/tradgardsrytmen-m2-pwa/staticfiles/
+  mw_instance = middleware(adapted_handler)
+...................................................................................................................../Users/joakimohman/Code/tradgardsrytmen-m2-pwa/garden/test_database_backup.py:28: UserWarning: Overriding setting DATABASES can lead to unexpected behavior.
+  with override_settings(DATA_DIR=Path(directory), DATABASES={'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': source}}):
+./Users/joakimohman/Code/tradgardsrytmen-m2-pwa/garden/test_database_backup.py:37: UserWarning: Overriding setting DATABASES can lead to unexpected behavior.
+  with override_settings(DATA_DIR=Path(directory), DATABASES={'default': config}), patch('garden.database_backup.subprocess.run', side_effect=OSError('failed')) as command, patch('garden.database_backup.sqlite3.connect') as sqlite:
+./Users/joakimohman/Code/tradgardsrytmen-m2-pwa/garden/test_database_backup.py:18: UserWarning: Overriding setting DATABASES can lead to unexpected behavior.
+  with override_settings(DATA_DIR=Path(directory), DATABASES={'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': source}}):
+........................................E....................................................................................................................
+======================================================================
+ERROR: setUpClass (garden.test_pwa_http.PwaRealHttpTests)
+----------------------------------------------------------------------
+Traceback (most recent call last):
+  File "/tmp/m2-pwa-py313/lib/python3.12/site-packages/django/core/servers/basehttp.py", line 92, in __init__
+    super().__init__(*args, **kwargs)
+  File "/tmp/m2-pwa-py313/lib/python3.12/site-packages/django/core/servers/basehttp.py", line 77, in __init__
+    super().__init__(*args, **kwargs)
+  File "/Users/joakimohman/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/socketserver.py", line 457, in __init__
+    self.server_bind()
+  File "/Users/joakimohman/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/wsgiref/simple_server.py", line 50, in server_bind
+    HTTPServer.server_bind(self)
+  File "/Users/joakimohman/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/http/server.py", line 140, in server_bind
+    socketserver.TCPServer.server_bind(self)
+  File "/Users/joakimohman/.cache/codex-runtimes/codex-primary-runtime/dependencies/python/lib/python3.12/socketserver.py", line 478, in server_bind
+    self.socket.bind(self.server_address)
+PermissionError: [Errno 1] Operation not permitted
+
+----------------------------------------------------------------------
+Ran 281 tests in 13.071s
+
+FAILED (errors=1)
+Destroying test database for alias 'default'...
+Found 282 test(s).
+System check identified no issues (0 silenced).
+Trädgården är grundfylld.
+Trädgården är grundfylld.

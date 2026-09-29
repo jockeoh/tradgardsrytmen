@@ -1,0 +1,4 @@
+25 objects imported automatically (use -v 2 for details).
+
+[('Vattna 1', 'completed', 'Bevara anteckningen', 2), ('Vattna 2', 'completed', 'Bevara anteckningen', 2), ('Vattna 3', 'completed', '', 2), ('Vattna 4', 'completed', 'Ny serveranteckning', 3), ('Vattna 5', 'completed', 'Bevara anteckningen', 2)]
+receipts 5

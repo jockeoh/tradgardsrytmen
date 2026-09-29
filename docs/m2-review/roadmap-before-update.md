@@ -2,14 +2,10 @@
 
 ## Aktuell inriktning 2026-09-29
 
-**M2-PWA är implementerat och de tre verifierade granskningsfynden är
-rättade lokalt. Nästa steg är att granska rättningarna och komplettera
-verifieringen inför ett separat publiceringsbeslut.** Publicering av källkoden är beställd 2026-09-29. Paketet finns i `tradgardsrytmen-m2-pwa`, gren `task/m2-pwa-offline`, bas
-`59d4c4c0bcae86778a8b6c54e21371d011679cd9`. Ingen M2-serverrelease eller produktionsaktivering är gjord i denna uppgift.
-
-Privat PWA prioriteras. iPhone-/Expo-installation och I1:s native-prov är
-fortsatt pausade och blockerar inte det lokala M2-arbetet. Se
-[leveransen](m2-pwa.md) och [rättningsunderlaget](m2-review/fixes.md).
+Nästa beställda utvecklingspaket är **M2-PWA: arbetslista och klarmarkering
+offline i befintlig PWA**. Användaren har pausat iPhone-/Expo-installation
+tills vidare och valt att fortsätta utvecklingen. Native-prov för I1 är
+fortfarande öppna; de markeras inte som godkända. Privat PWA prioriteras nu.
 
 Ansluten hemmaapp har levererats med riktig HTTP-transport, privat personlig
 Django-inloggning, beständiga sparavsikter och avstämning. Serverrelease
@@ -20,58 +16,39 @@ backup återlästes. HTTPS, tjänster och sex timers verifierades. Detta är
 historiskt releasebevis, inte en ny driftkontroll 2026-09-29.
 
 Detaljerat lokalt driftunderlag finns i
-[releaseunderlaget](home-app-private-release-status.md).
-För den tidigare anslutna Expo-klienten blockerades fullt browserflöde/två
-riktiga flikar av browsermiljön; fysisk
+[releasearbetskopian](../../tradgardsrytmen-private-release/docs/home-app-private-release-status.md).
+Fullt browserflöde/två riktiga flikar blockerades av browsermiljön; fysisk
 telefon och simulator har inte verifierats. Export är inte native körning.
 
-## M2-PWA: genomfört lokalt
+## Nästa uppdrag: M2-PWA
 
-Arbetslista kan läsas offline. Klarmarkering med valfri anteckning sparas i
-en beständig kö och synkas när appen är öppen. Bekräftad historik skiljs från
-väntande handlingar; samma key/body återanvänds efter tappat svar. Konto,
-trädgård, exakt medlemskap, offlineutloggning och explicita konfliktval ingår.
+Bygg ett sammanhängande granskningsbart paket i befintlig Django/PWA:
 
-Efter granskningen rättades tre fynd: formulärets visade version och egen
-anteckning binds före köläggning, väntande logout återhämtar aktuell CSRF,
-och sjudagars-/klockspärren består efter omstart och klockjustering.
-SW är `tradgardsrytmen-v16-m2`, assets `m2-6`.
+- Läs senast hämtade arbetslista utan nät, med synlig tid för senaste hämtning.
+- Klarmarkera befintliga uppgifter med valfri anteckning offline. Skilj
+  väntande lokal handling från serverbekräftad historik.
+- Synka när appen är öppen och anslutningen återkommer. Återanvänd fryst
+  innehåll och samma begäransnyckel vid tappat svar/omstart. Ingen garanti
+  om bakgrundssynkning när iOS har stängt appen.
+- Hantera versionskonflikt med färsk serverstatus och användarens uttryckliga
+  val; bevara orörd respektive uttryckligen tömd anteckning.
+- Avgränsa cache/kö till server, konto och trädgård. Skydda mot kontobyte,
+  utloggning, återkallat medlemskap, gammal service worker och flera flikar.
+  Osäkert skickade avsikter får inte tyst tappas eller skickas med ny nyckel.
+- Testa isolerat med riktig server, tappat svar efter commit, omladdning,
+  offline/online, två konton och två verkliga browserflikar där miljön tillåter.
+  Redovisa browser-, automatiserade och fysiska iPhone-prov separat.
 
-Verifierat efter rättning: **56/56 JavaScript, 281 Django-tester och 4/4
-fristående Python-prov**, plus Django check, migrationskontroll, syntax och
-diffkontroll. Hela Django-körningen är inte grön: ett ytterligare HTTP-prov
-kunde inte starta loopbackserver på grund av sandboxens `PermissionError`.
-UI-regressionerna kör levererade skript med DOM-adapter, inte riktig browser.
-Ursprungsleveransens riktiga browserprov gäller m2-5 och är äldre bevis.
+Läs aktuella cache-/sessions-/API-kontrakt först. Återanvänd v1:s idempotens
+eller komplettera serverkontraktet där det behövs; anta inte att äldre PWA-
+mutationer redan har samma skydd. Dokumentera vad som lagras lokalt och
+hur offline-utloggning/rensning hanteras innan synkning implementeras.
 
-## Plan framåt, i ordning
-
-1. **Granska rättningarna.** Utgå från rättningsunderlaget, patchen och
-   slutmanifestet. Kontrollera särskilt två flikars skilda utkast/versioner,
-   logout efter CSRF-rotation och bestående lässpärr efter klockjustering.
-2. **Komplettera isolerade integrationsprov där miljön tillåter.** Kör om
-   HTTP-/processdödsprovet med syntetisk filbaserad SQLite. Prova m2-6 i två
-   riktiga browserflikar: de rapporterade konfliktförloppen, tom/orörd
-   anteckning, offlineutloggning, ny login och byte från äldre service worker.
-   Prova även sessionsadaptern och regressionssviten mot isolerad PostgreSQL
-   inför release till den befintliga PostgreSQL-driften. Behåll miljöhinder
-   och ej genomförda prov synliga; kringgå inga spärrar.
-3. **Förbered integration och separat beslut om commit/push och release.**
-   Jämför med då aktuell main och bevara den separata dokumentpubliceringen.
-   För inte över äldre ärvda dokument ovanpå nyare planer. Vid en beställd
-   release verifieras CI, terminal deployment, driftsatt revision, hälsa
-   och SW-/assetversioner. Lokala testresultat är inte driftbevis.
-4. **Följ upp privat PWA efter godkänd release.** Verifiera vardagsflödet på
-   en faktisk telefon/installerad PWA när användaren vill återuppta sådana
-   prov. Ta därefter ställning till nästa avgränsade förbättring, exempelvis
-   export/manuell avstämning av gamla osäkra avsikter. Automatisk gallring
-   eller nya nycklar för oklara utfall ingår inte som standard.
-
-Commit/push av källkoden är beställd. Serverrelease och nya funktioner
-kräver fortfarande separata beslut.
-Native I1/Expo förblir pausat. Bred offline-redigering, nya växter offline,
-offline-AI, native push, L1/betalningar, Auth0 och publik lansering är senare
-spår som kräver egna beslut. Inga verkliga AI-/pushanrop ingår.
+Omfattningen är beslutad för privat PWA och behöver inte invänta L1 eller
+native I1. Full offline-redigering, nya växter offline, AI-kö offline, native
+push, betalningar, Auth0 och publik lansering ingår inte. Ingen extern AI/push,
+produktionsmutation, commit/push eller deployment ingår i nästa lokala
+implementationsuppdrag. Arbeta i separat worktree och bevara befintligt arbete.
 
 ## Prioriterad restlista och verifierad status
 
@@ -87,7 +64,7 @@ Tabellen skiljer genomförd serverleverans från pausade native-prov.
 | Senare: L1 | Produktförslag finns; ingen färdig separat L1-leverans eller fastställd betal-/offlineomfattning verifierad. | Besluta målgrupp/marknad, betalande part, priser, AI-kvoter, delning, offlineomfattning och webbens framtid. Ger avgränsning för M2/B1/R1; leverantörsavtal och köp är separata externa beslut. |
 | Pausat: I1 telefonverifiering | Privat serverintegration och mobilinloggning driftsatta; fysisk iOS/Android inte verifierad. | iPhone-/Expo-installation pausad 2026-09-29 på användarens begäran. Återuppta enhetsprov senare; Auth0 är inte förkrav för privat hemmaapp. |
 | Senare: Native AI | P3 ger bara privat webbkö, inga native v1 AI-endpoints. | Specificera/implementera v1 start/status/granskning/godkännande, uttryckligt datamedgivande och utfall/återförsök; koppla till driftklar P3 efter I1. Krävs om AI ingår i mobil v1; inga riktiga prov utan godkännande. |
-| Nu: M2-PWA, rättat lokalt | Offlinearbetslista och beständig kö implementerade; tre granskningsfynd rättade. 56 JS, 281 Django och 4 Python passerade. Källkodspublicering beställd; ingen M2-serverrelease. | Granska rättningarna, återkör miljöblockerat HTTP-prov och komplettera riktiga browser-/PostgreSQL-prov inför separat integrations- och releasebeslut. Native/Expo fortsatt pausat. |
+| Nästa: M2-PWA | Beställt 2026-09-29 enligt paketet ovan; ännu inte implementerat/verifierat. | Arbetslista offline, beständig kö för klarmarkering/anteckning, säker synkning och konflikter i befintlig PWA. Native push och bredare offline-redigering ligger senare. |
 | 7. B1 | Köp/tillgång inte verifierade som implementerade. | Efter I1 + L1: välj köptransport, serververifierad tillgång, köp/återställning/förnyelse/uppsägning/återbetalning och deduplicerade händelser. Butikskonton, avtal, betalningar och publicering kräver separata beslut. Villkorligt: bara nödvändigt för betald lansering. |
 | 8. R1 och publik drift | Inte lanseringsklar; lokala testresultat är inte produktionsbevis. | Verifiera kontoåterställning, support, integritetsinformation, export/radering, tillgänglighet och äldre klienter. Inför publik AI-budget/frekvensgränser/kostnadslarm. Verifiera backup/återläsning, driftlarm, belastning, butiksunderlag och båda plattformarna för beslutad v1. Extern pilot och butikslansering godkänns separat. |
 

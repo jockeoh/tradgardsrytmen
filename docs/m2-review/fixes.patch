@@ -1,0 +1,658 @@
+--- a/docs/m2-pwa.md
++++ b/docs/m2-pwa.md
+@@ -1,4 +1,9 @@
+ # M2-PWA – lokal granskningsleverans 2026-09-29
++
++**Rättad efter granskning:** de tre fynden om formulär/flikar, väntande
++logout/CSRF och beständig tidsgräns är åtgärdade lokalt. Aktuella testresultat,
++ändringslista och begränsningar finns i [rättningsunderlaget](m2-review/fixes.md).
++Browserbevisen längre ned gäller ursprungsleveransen, inte dessa rättningar.
+
+ Arbetskopia `/Users/joakimohman/Code/tradgardsrytmen-m2-pwa`, gren
+ `task/m2-pwa-offline`, från nyhämtad `origin/main`
+@@ -35,14 +40,24 @@
+   innehåller schemaversion 1 och separata poster för konto-UUID,
+   trädgårds-UUID och medlemskaps-PK. Aktiv vy är separat från bevarade köer.
+ - Alla journaländringar och transporter går genom ett gemensamt originlås
+-  med Web Locks. En andra flik återläser under låset. Samma uppgift kan
++  med Web Locks. En andra flik återläser under låset.
++  Formulärutkast hålls separat i flikens sessionStorage (`garden.m2.forms.v1`),
++  bundna till konto/trädgård/exakt medlemskap och sessionsgräns. Utkastet
++  innehåller den faktiskt visade uppgiftsversionen och egen anteckning;
++  motorn kopierar dessa vid bekräftelse före väntan på fliklåset. Delade
++  snapshots får aldrig uppgradera ett redigerat utkast. Orörd anteckning
++  utelämnas; uttrycklig tömning skickas som tom sträng. Samma uppgift kan
+   inte få två parallella aktiva avsikter. Saknat låsstöd, trasig JSON eller
+   lagringsfel stoppar mutation; ingen tom ersättningsjournal skapas tyst.
+ - Fryst body/UUID/tid/kontext skrivs först. `sent` skrivs före nätanropet.
+   En skickad/oklar post läser kvittot innan omsändning. Inget kvitto före
+   sju dagar innebär samma nyckel/body; efter sju dagar eller bakåtställd
+   lokal klocka tillåts endast läsande avstämning. Åldern kontrolleras igen
+-  efter avstämningen. Tiden för första försök/avsikt nollställs aldrig.
++  efter avstämningen och även när anrop misslyckas. `readOnlyReason` och
++  `lastObserved` sparas före transport: en konstaterad sjudagarsgräns eller
++  klockbackning kan aldrig öppna automatisk mutation igen vid omstart eller
++  ny klockjustering. Bekräftat kvitto kan fortfarande avsluta posten.
++  Tiden för första försök/avsikt nollställs aldrig.
+ - Sessions-CSRF och signerad konto/garden/exakt medlemskapskontext följer
+   varje privat anrop. Servern validerar aktuell session och levande grant;
+   medlemskapsraden hålls låst över klarmarkeringen och kvittoreplay.
+@@ -54,7 +69,12 @@
+   Web Lock. Nästa köpost får inte sändas. Redan pågående anrop kan ha
+   committat; utfallet/journalen bevaras. Därefter rensas aktiva snapshots
+   och formulärutkast, aktiv vy låses, och serverlogout sparas som väntande.
+-  Login/kontextaktivering slutför först denna logout. Kön raderas inte.
++  Login/kontextaktivering slutför först denna logout. Aktuell CSRF-cookie
++  används vid varje försök; saknad token hämtas via login-sidans vanliga GET.
++  403 ger högst en tokenuppdatering och ett nytt logoutförsök per aktivering.
++  Login kan försöka på nytt efter ett misslyckat startförsök. Journalens
++  signerade konto/trädgård/medlemskap ändras inte för att förnya CSRF.
++  Kön raderas inte.
+ - Samma konto och samma medlemskap kan återuppta kön efter ny online-login.
+   Annat konto får varken dess lista, kö eller nycklar i gränssnittet.
+   Återskapat medlemskap får en annan scope. Samma konto ser en kort
+@@ -74,7 +94,7 @@
+
+ ## Service worker och äldre klienter
+
+-SW `tradgardsrytmen-v15-m2`, assets `m2-5`. Ingen privat HTML eller API-cache.
++Aktuell SW `tradgardsrytmen-v16-m2`, assets `m2-6`. Ingen privat HTML eller API-cache.
+ Endast ett identitetsfritt skal och statiska resurser lagras. Navigation till
+ `/` eller `/worklist/` använder nätet och faller tillbaka till detta skal vid
+ nätfel. Login, trädgårdsval och API-anrop får aldrig skal som SW-fallback.
+@@ -84,7 +104,7 @@
+ nya workern ska aktiveras. En gammal worker saknar nya offlinefunktioner men
+ kan inte skriva om eller skicka den nya kön. Inget bakgrundsjobb registreras.
+
+-## Verifiering
++## Ursprunglig verifiering före rättningarna
+
+ Isolerad Python **3.12.14**, Django **5.2.17**, låsta requirements. Namnet på
+ testmiljön `/tmp/m2-pwa-py313` är historiskt missvisande; exekverad version är
+--- a/garden/static/garden/offline-core.js
++++ b/garden/static/garden/offline-core.js
+@@ -4,7 +4,7 @@
+   'use strict';
+   const KEY = 'garden.m2.v1', LOCK = 'garden.m2.v1', STOP = 'garden.m2.stop', WEEK = 604800000;
+   const scope = c => [c.account, c.garden, c.membership].join(':');
+-  function create({storage, locks, fetch: transport, now = Date.now, uuid = () => crypto.randomUUID(), origin, boundary = () => typeof document === 'undefined' ? null : (document.cookie.match(/(?:^|; )garden_session_boundary=([^;]*)/)||[])[1]}) {
++  function create({storage, locks, fetch: transport, now = Date.now, uuid = () => crypto.randomUUID(), origin, csrf = () => typeof document === 'undefined' ? '' : decodeURIComponent((document.cookie.match(/(?:^|; )csrftoken=([^;]*)/)||[])[1]||''), boundary = () => typeof document === 'undefined' ? null : (document.cookie.match(/(?:^|; )garden_session_boundary=([^;]*)/)||[])[1]}) {
+     const read = () => {
+       const raw = storage.getItem(KEY);
+       if (!raw) return {version:1, epoch:0, active:null, logout:false, scopes:{}};
+@@ -47,14 +47,24 @@
+       if([401,403,404].includes(e.status)||e.code==='context_changed') {d.active=null;s.snapshot=null;write(d);}
+     }
+     function prepareLogout(d) {
+-      const s=d.active?d.scopes[d.active]:null;
+-      d.logout=d.logout || {csrf:s?.context.csrf || (typeof document==='undefined'?'':decodeURIComponent((document.cookie.match(/(?:^|; )csrftoken=([^;]*)/)||[])[1]||''))};
++      d.logout=d.logout || {scope:d.active};
+       d.active=null;d.epoch++;for(const saved of Object.values(d.scopes)){saved.snapshot=null;saved.drafts={};}write(d);
+     }
+     async function finishLogout(d) {
+-      let r;
+-      try {r = await transport('/accounts/logout/', {method:'POST',credentials:'same-origin',headers:{'X-CSRFToken':d.logout.csrf},signal:AbortSignal.timeout(12000)});} catch (_) {throw Error('Utloggad lokalt. Anslut för att avsluta serversessionen.');}
+-      if (!r.ok) throw Error('Utloggad lokalt. Anslut för att avsluta serversessionen.');
++      const options={credentials:'same-origin',cache:'no-store',signal:AbortSignal.timeout(12000)};
++      const refreshCsrf=async()=>{
++        const r=await transport('/accounts/login/',{...options,method:'GET'});
++        if(!r.ok || !csrf()) throw Error('CSRF saknas.');
++      };
++      try {
++        // The cookie belongs to the current session. Never reuse a journal token
++        // or change any queued intent's signed account/garden/grant context.
++        if(!csrf()) await refreshCsrf();
++        const post=()=>transport('/accounts/logout/',{...options,method:'POST',headers:{'X-CSRFToken':csrf()}});
++        let r=await post();
++        if(r.status===403){await refreshCsrf();r=await post();}
++        if(!r.ok) throw Error('Utloggningen avvisades.');
++      } catch (_) {throw Error('Utloggad lokalt. Anslut för att avsluta serversessionen.');}
+       d.logout=false; write(d); storage.removeItem(STOP);
+     }
+     return {
+@@ -85,32 +95,53 @@
+           if([401,403,404,409].includes(e.status)){d.active=null;s.snapshot=null;write(d);} throw e;
+         }
+       }),
+-      draft: (expected,id,note) => lock(() => {const d=read(),s=active(d,expected);s.drafts[id]=note;write(d);}),
+-      enqueue: (expected,id) => lock(() => {
+-        const d=read(),s=active(d,expected),t=s.snapshot?.tasks.find(t=>t.id===id);
+-        if(!t || t.status!=='pending') throw Error('Hämta uppgiften igen.');
+-        if(s.queue.some(q=>q.task.id===id)) throw Error('Uppgiften väntar redan på synkning.');
+-        const body={expected_version:t.version};
+-        if(Object.hasOwn(s.drafts,id)) body.note=s.drafts[id];
+-        const q={key:uuid(),path:`/api/v1/gardens/${s.context.garden}/tasks/${id}/complete/`,body:JSON.stringify(body),created:now(),state:'queued',task:t};
+-        s.queue.push(q);delete s.drafts[id];write(d);return q.key;
+-      }),
++      enqueue: (expected,form) => {
++        // Capture before waiting for the cross-tab lock. The visible form owns
++        // both version and note; shared snapshots/drafts cannot rebase it.
++        const intent=JSON.parse(JSON.stringify(form||null));
++        return lock(() => {
++          const d=read(),s=active(d,expected),t=intent?.task;
++          if(!t || t.garden_id!==s.context.garden || !t.id || t.status!=='pending' || !Number.isInteger(t.version) || t.version<1) throw Error('Hämta uppgiften igen.');
++          if(s.queue.some(q=>q.task.id===t.id)) throw Error('Uppgiften väntar redan på synkning.');
++          const body={expected_version:t.version};
++          if(Object.hasOwn(intent,'note')) {
++            if(typeof intent.note!=='string') throw Error('Anteckningen kunde inte läsas.');
++            body.note=intent.note;
++          }
++          const q={key:uuid(),path:`/api/v1/gardens/${s.context.garden}/tasks/${t.id}/complete/`,body:JSON.stringify(body),created:now(),state:'queued',task:t};
++          s.queue.push(q);write(d);return q.key;
++        });
++      },
+       sync: expected => lock(async () => {
+         const d=read(),s=active(d,expected);
+         for(const q of [...s.queue]) {
+           if(storage.getItem(STOP)) return;
++          // Persist a one-way transport fence BEFORE receipt I/O, including
++          // failures and restarts. Track observed time to detect smaller rollbacks.
++          const readOnly=()=>{
++            const time=now();
++            if(!q.readOnlyReason) {
++              if(time<Math.max(q.created,q.lastObserved||q.created)) q.readOnlyReason='clock_rollback';
++              else if(time-q.created>=WEEK) q.readOnlyReason='age_limit';
++            }
++            q.lastObserved=Math.max(time,q.lastObserved||q.created);
++            if(q.readOnlyReason && !['conflict','rejected'].includes(q.state)) q.state='uncertain';
++            write(d);
++            return !!q.readOnlyReason;
++          };
++          const fenced=readOnly();
+           if(q.state==='conflict' || q.state==='rejected' || now()<(q.retryAt||0)) continue;
+           try {
+             let result;
+-            if(q.sent || now()-q.created>=WEEK || now()<q.created) {
++            if(q.sent || fenced) {
+               const receipt=await http('/api/pwa/reconcile/',s.context,{path:q.path,key:q.key,body:JSON.parse(q.body)});
+               if(receipt.state==='confirmed') result=receipt.result;
+               else if(receipt.state!=='unknown') throw Error('Avstämningen kunde inte läsas.');
+-              else if(now()-q.created>=WEEK || now()<q.created) {q.state='uncertain';write(d);continue;}
++              else if(readOnly()) continue;
+             }
+             if(!result) {
+               if(storage.getItem(STOP)) return;
+-              if(now()-q.created>=WEEK || now()<q.created){q.state="uncertain";write(d);continue;}
++              if(readOnly()) continue;
+               // Durable attempted marker BEFORE crossing the network boundary.
+               q.sent=true;q.state='sending';write(d);
+               result=await http(`/api/pwa/tasks/${q.task.id}/complete/`,s.context,q.body,q.key);
+@@ -120,6 +151,7 @@
+             if(s.snapshot) s.snapshot.tasks=s.snapshot.tasks.map(t=>t.id===result.id?{...t,...result}:t);
+             write(d);
+           } catch(e) {
++            readOnly();
+             if(e.status===409 && ['version_conflict','invalid_transition'].includes(e.code)) {
+               q.state='conflict';write(d);
+               try {await refreshScope(s);q.current=s.snapshot.tasks.find(t=>t.id===q.task.id)||null;write(d);}catch(readError){invalidate(d,s,readError);throw readError;}
+@@ -138,7 +170,7 @@
+         const t=s.snapshot.tasks.find(t=>t.id===q.task.id);
+         if(retry && (!t || t.status!=='pending')) {write(d);throw Error('Uppgiften är inte längre planerad. Behåll serverns status.');}
+         // Only a definitive rejected attempt can be superseded by explicit choice.
+-        if(retry){const body=JSON.parse(q.body);body.expected_version=t.version;s.queue.push({...q,key:uuid(),body:JSON.stringify(body),created:now(),sent:false,state:'queued',task:t,current:null});}
++        if(retry){const body=JSON.parse(q.body);body.expected_version=t.version;s.queue.push({...q,key:uuid(),body:JSON.stringify(body),created:now(),lastObserved:now(),readOnlyReason:null,sent:false,state:'queued',task:t,current:null});}
+         s.archive.push({...q,state:'resolved'});s.queue=s.queue.filter(x=>x.key!==key);write(d);
+       }),
+       logout: () => {
+--- a/garden/static/garden/offline-session.js
++++ b/garden/static/garden/offline-session.js
+@@ -3,18 +3,36 @@
+ /* Loaded on login, selection and the online app. Never adopt an old tab's intent. */
+ 'use strict';
+ const offlineSession=GardenOffline.create({storage:localStorage,locks:navigator.locks,fetch:window.fetch.bind(window),origin:location.origin});
+-const offlineGate=offlineSession.view().then(async v=>{
++const settleSession=async()=>{
++ const v=await offlineSession.view();
+  const account=document.body.dataset.accountId,garden=document.body.dataset.gardenId;
+  if(!account || (v.data && (v.data.context.account!==account || v.data.context.garden!==garden)))await offlineSession.deactivate();
+  if(v.logout)await offlineSession.logout();
+-});
++};
++const offlineGate=settleSession();
+ offlineGate.catch(()=>{});
+ document.addEventListener('submit',e=>{
+  const logout=new URL(e.target.action,location.href).pathname==='/accounts/logout/';
+  const identity=location.pathname.startsWith('/accounts/login')||location.pathname.startsWith('/gardens/select');
+  if(!logout&&!identity)return;
+  e.preventDefault();const submitter=e.submitter;const pendingLogout=logout?offlineSession.logout():null;pendingLogout?.catch(()=>{});
+- (async()=>{await offlineGate;if(logout){await pendingLogout;location.href='/accounts/login/';}else{await offlineSession.deactivate();if(submitter?.name){const f=document.createElement('input');f.type='hidden';f.name=submitter.name;f.value=submitter.value;e.target.append(f);}HTMLFormElement.prototype.submit.call(e.target);}})().catch(()=>{let p=document.getElementById('offline-session-error');if(!p){p=document.createElement('p');p.id='offline-session-error';p.setAttribute('role','alert');e.target.append(p);}p.textContent='Lokalt låst. Anslut till nätet för att slutföra utloggning eller kontobyte. Väntande handlingar finns kvar.';});
++ (async()=>{
++  // A failed page-load attempt must not poison every later submit.
++  await offlineGate.catch(()=>{});
++  if(logout){await pendingLogout;location.href='/accounts/login/';return;}
++  await settleSession();
++  await offlineSession.deactivate();
++  const csrf=e.target.querySelector('[name=csrfmiddlewaretoken]');
++  if(csrf)csrf.value=decodeURIComponent((document.cookie.match(/(?:^|; )csrftoken=([^;]*)/)||[])[1]||csrf.value);
++  if(submitter?.name){
++   const f=document.createElement('input');f.type='hidden';f.name=submitter.name;f.value=submitter.value;e.target.append(f);
++  }
++  HTMLFormElement.prototype.submit.call(e.target);
++ })().catch(()=>{
++  let p=document.getElementById('offline-session-error');
++  if(!p){p=document.createElement('p');p.id='offline-session-error';p.setAttribute('role','alert');e.target.append(p);}
++  p.textContent='Lokalt låst. Anslut till nätet för att slutföra utloggning eller kontobyte. Väntande handlingar finns kvar.';
++ });
+ });
+
+ })();
+--- a/garden/static/garden/sw.js
++++ b/garden/static/garden/sw.js
+@@ -1,5 +1,5 @@
+-const CACHE = "tradgardsrytmen-v15-m2";
+-const ASSETS = ["/static/garden/worklist.html", "/static/garden/worklist.css?v=m2-5", "/static/garden/offline-core.js?v=m2-5", "/static/garden/worklist.js?v=m2-5", "/static/garden/offline-session.js?v=m2-5", "/static/garden/app.css?v=20260926jobs1", "/static/garden/app.js?v=20260926jobs1", "/static/garden/images/garden-hero.jpg", "/static/garden/icons/icon.svg", "/static/garden/manifest.webmanifest"];
++const CACHE = "tradgardsrytmen-v16-m2";
++const ASSETS = ["/static/garden/worklist.html", "/static/garden/worklist.css?v=m2-6", "/static/garden/offline-core.js?v=m2-6", "/static/garden/worklist.js?v=m2-6", "/static/garden/offline-session.js?v=m2-6", "/static/garden/app.css?v=20260926jobs1", "/static/garden/app.js?v=20260926jobs1", "/static/garden/images/garden-hero.jpg", "/static/garden/icons/icon.svg", "/static/garden/manifest.webmanifest"];
+ self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS))));
+ self.addEventListener("activate", event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith("tradgardsrytmen-") && k !== CACHE).map(k => caches.delete(k))))));
+ self.addEventListener("fetch", event => {
+--- a/garden/static/garden/worklist.html
++++ b/garden/static/garden/worklist.html
+@@ -1,3 +1,3 @@
+ <!doctype html>
+-<html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#284e3b"><title>Arbetslista · Trädgårdsrytmen</title><link rel="manifest" href="/static/garden/manifest.webmanifest"><link rel="stylesheet" href="/static/garden/worklist.css?v=m2-5"><script src="/static/garden/offline-core.js?v=m2-5" defer></script><script src="/static/garden/worklist.js?v=m2-5" defer></script></head>
++<html lang="sv"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#284e3b"><title>Arbetslista · Trädgårdsrytmen</title><link rel="manifest" href="/static/garden/manifest.webmanifest"><link rel="stylesheet" href="/static/garden/worklist.css?v=m2-6"><script src="/static/garden/offline-core.js?v=m2-6" defer></script><script src="/static/garden/worklist.js?v=m2-6" defer></script></head>
+ <body><main><nav><a href="/">Trädgårdsrytmen</a><button id="logout">Logga ut</button></nav><h1>Arbetslista</h1><p id="identity"></p><p id="status" role="status" aria-live="polite">Hämtar arbetslistan …</p><p id="fetched"></p><button id="refresh">Synka nu</button><button id="open" hidden>Öppna inloggad trädgård</button> <a id="signin" href="/accounts/login/?next=/worklist/" hidden>Logga in</a><details id="held" hidden><summary>Handlingar från tidigare åtkomst</summary><p>De hålls spärrade. Öppna ursprunglig trädgård eller be administratören stämma av dessa begäransnycklar. De synkas aldrig som ett nytt medlemskap.</p><ul></ul></details><section id="pending" aria-label="Väntar på synkning"></section><section id="tasks" aria-label="Att göra"></section><details id="history"><summary>Bekräftad historik</summary><div></div></details><details><summary>Om offline</summary><p>Senast hämtade uppgifter sparas på denna enhet. Synkning sker när appen är öppen. Efter en appuppdatering kan du behöva stänga alla trädgårdsflikar och öppna appen igen för att det nya offlineläget ska bli tillgängligt. Åtkomst som återkallas på servern upptäcks när nätet återkommer.</p><p>Logga ut för att dölja listan på en delad enhet. Väntande handlingar bevaras låsta till samma konto och medlemskap tills utfallet är känt. Rensa inte webbläsarens data innan de är avstämda.</p></details></main></body></html>
+--- a/garden/static/garden/worklist.js
++++ b/garden/static/garden/worklist.js
+@@ -3,6 +3,26 @@
+ const el=id=>document.getElementById(id);
+ const escape=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+ let tabScope=null,busy=false,operations=Promise.resolve();
++// sessionStorage is separate per tab (including after a duplicated tab diverges).
++// Persist the displayed task version together with that tab's own edited note.
++const FORM_KEY='garden.m2.forms.v1';
++let forms=null;
++function saveForms(){sessionStorage.setItem(FORM_KEY,JSON.stringify(forms));}
++function clearForms(){
++ forms=null;
++ // A storage error must never prevent hiding private DOM after logout.
++ try{sessionStorage.removeItem(FORM_KEY);}catch(_){}
++}
++function loadForms(s){
++ if(!forms) forms=JSON.parse(sessionStorage.getItem(FORM_KEY)||'null');
++ if(!forms || forms.scope!==tabScope || forms.boundary!==s.context.boundary) forms={scope:tabScope,boundary:s.context.boundary,tasks:{}};
++ for(const q of s.queue) delete forms.tasks[q.task.id];
++ for(const t of s.snapshot?.tasks||[]) {
++  if(t.status!=='pending') delete forms.tasks[t.id];
++  else if((!forms.tasks[t.id]||!Object.hasOwn(forms.tasks[t.id],'note'))&&!s.queue.some(q=>q.task.id===t.id)) forms.tasks[t.id]={task:t};
++ }
++ saveForms();
++}
+ const title=t=>`<h3>${escape(t.title)}</h3><small>${escape(t.plant_name)} · ${escape(t.due_date)}</small>`;
+ async function render(){
+  const v=await engine.view(),s=v.active===tabScope?v.data:null;
+@@ -10,12 +30,13 @@
+  el('held').hidden=!s||!v.held.length;el('held').querySelector('ul').innerHTML=s?v.held.map(q=>`<li>${escape(q.key)}</li>`).join(''):'';
+  el('identity').textContent=s?`${s.context.name} · ${s.context.account_name}`:'';
+  el('fetched').textContent=s?.snapshot?`Senast hämtad ${new Date(s.snapshot.fetched).toLocaleString('sv-SE')}`:'';
+- if(!s){el('pending').innerHTML='';el('tasks').innerHTML='';el('history').hidden=true;el('status').textContent=v.logout?'Utloggad lokalt. Anslut för att avsluta utloggningen.':'Öppna din inloggade trädgård med nätanslutning.';return;}
++ if(!s){clearForms();el('pending').innerHTML='';el('tasks').innerHTML='';el('history').hidden=true;el('status').textContent=v.logout?'Utloggad lokalt. Anslut för att avsluta utloggningen.':'Öppna din inloggade trädgård med nätanslutning.';return;}
++ loadForms(s);
+  el('history').hidden=false;
+  el('status').textContent=navigator.onLine?'Synkas när appen är öppen.':'Utan nät · sparas på enheten.';
+- el('pending').innerHTML=s.queue.length?'<h2>Väntar på synkning</h2>'+s.queue.map(q=>`<article class="pending">${title(q.task)}<p>${escape(({queued:'Sparad på enheten',sending:'Inväntar bekräftelse',uncertain:'Utfallet behöver stämmas av. Synka igen med nät.',conflict:'Uppgiften har ändrats.',rejected:'Handlingen avvisades. Behåll begäransnyckeln och be om hjälp.'})[q.state])}</p>${Object.hasOwn(JSON.parse(q.body),'note')?`<p>Din anteckning: ${escape(JSON.parse(q.body).note)||'(tömd)'}</p>`:''}${q.state==='conflict'?`<p>Servern: ${escape(({pending:'Planerat',completed:'Utfört',skipped:'Överhoppat',archived:'Arkiverat'})[q.current?.status]||'hämta aktuell status')} · ${escape(q.current?.note||'Ingen anteckning')}</p><div class="actions">${q.current?.status==='pending'?`<button data-retry="${q.key}">Klarmarkera senaste versionen</button>`:''}<button data-keep="${q.key}">Behåll serverns status</button></div>`:''}<details><summary>Begäransnyckel</summary>${escape(q.key)}${Date.now()-q.created>=GardenOffline.WEEK?'<p>Äldre än sju dagar. Endast läsande avstämning; be administratören kontrollera utfallet om kvitto saknas.</p>':''}</details></article>`).join(''):'';
++ el('pending').innerHTML=s.queue.length?'<h2>Väntar på synkning</h2>'+s.queue.map(q=>`<article class="pending">${title(q.task)}<p>${escape(({queued:'Sparad på enheten',sending:'Inväntar bekräftelse',uncertain:'Utfallet behöver stämmas av. Synka igen med nät.',conflict:'Uppgiften har ändrats.',rejected:'Handlingen avvisades. Behåll begäransnyckeln och be om hjälp.'})[q.state])}</p>${Object.hasOwn(JSON.parse(q.body),'note')?`<p>Din anteckning: ${escape(JSON.parse(q.body).note)||'(tömd)'}</p>`:''}${q.state==='conflict'?`<p>Servern: ${escape(({pending:'Planerat',completed:'Utfört',skipped:'Överhoppat',archived:'Arkiverat'})[q.current?.status]||'hämta aktuell status')} · ${escape(q.current?.note||'Ingen anteckning')}</p><div class="actions">${q.current?.status==='pending'?`<button data-retry="${q.key}">Klarmarkera senaste versionen</button>`:''}<button data-keep="${q.key}">Behåll serverns status</button></div>`:''}<details><summary>Begäransnyckel</summary>${escape(q.key)}${q.readOnlyReason || Date.now()-q.created>=GardenOffline.WEEK?'<p>Tidsgräns eller ändrad klocka. Endast läsande avstämning; be administratören kontrollera utfallet om kvitto saknas.</p>':''}</details></article>`).join(''):'';
+  const tasks=s.snapshot?.tasks||[],pending=tasks.filter(t=>t.status==='pending'&&!s.queue.some(q=>q.task.id===t.id));
+- el('tasks').innerHTML='<h2>Att göra</h2>'+ (pending.length?pending.map(t=>`<article>${title(t)}<p>${escape(t.instructions)}</p><form data-task="${t.id}"><label>Anteckning (valfri)<textarea maxlength="10000" data-note="${t.id}">${escape(Object.hasOwn(s.drafts,t.id)?s.drafts[t.id]:t.note)}</textarea></label><button type="submit">Markera som klar</button></form></article>`).join(''): '<p>Inga fler uppgifter i den hämtade listan.</p>');
++ el('tasks').innerHTML='<h2>Att göra</h2>'+ (pending.length?pending.map(current=>{const f=forms.tasks[current.id],t=f.task;return `<article>${title(t)}<p>${escape(t.instructions)}</p><form data-task="${t.id}"><label>Anteckning (valfri)<textarea maxlength="10000" data-note="${t.id}">${escape(Object.hasOwn(f,'note')?f.note:t.note)}</textarea></label><button type="submit">Markera som klar</button></form></article>`;}).join(''): '<p>Inga fler uppgifter i den hämtade listan.</p>');
+  el('history').querySelector('div').innerHTML=tasks.filter(t=>t.status!=='pending').map(t=>`<article>${title(t)}<p>${escape({completed:'Utfört',skipped:'Överhoppat',archived:'Arkiverat'}[t.status])}${t.completed_at?' · '+escape(new Date(t.completed_at).toLocaleString('sv-SE')):''}</p><p>${escape(t.note)}</p></article>`).join('')||'<p>Ingen hämtad historik.</p>';
+ }
+ function run(fn){operations=operations.then(async()=>{busy=true;try{await fn();await render();}catch(e){await render().catch(()=>{});el('status').textContent=typeof e.message==='string'?e.message:'Kunde inte synka. Försök igen.';}finally{busy=false;}});return operations;}
+@@ -23,9 +44,21 @@
+ async function sync(){await engine.sync(tabScope);await engine.refresh(tabScope);}
+ el('refresh').onclick=()=>run(sync);
+ el('open').onclick=()=>run(async()=>{tabScope=await engine.activate();await sync();});
+-el('logout').onclick=()=>{const logout=engine.logout();logout.catch(()=>{});tabScope=null;for(const id of ['identity','fetched','pending','tasks'])el(id).textContent='';el('history').hidden=true;el('held').hidden=true;el('status').textContent='Avslutar utloggning …';run(async()=>{await logout;location.href='/accounts/login/';});};
+-document.addEventListener('input',e=>{if(e.target.matches('[data-note]'))engine.draft(tabScope,e.target.dataset.note,e.target.value).catch(err=>{el('status').textContent=err.message;});});
+-document.addEventListener('submit',e=>{if(!e.target.matches('[data-task]'))return;e.preventDefault();run(async()=>{await engine.enqueue(tabScope,e.target.dataset.task);await render();if(navigator.onLine)await sync();});});
++el('logout').onclick=()=>{const logout=engine.logout();logout.catch(()=>{});tabScope=null;clearForms();for(const id of ['identity','fetched','pending','tasks'])el(id).textContent='';el('history').hidden=true;el('held').hidden=true;el('status').textContent='Avslutar utloggning …';run(async()=>{await logout;location.href='/accounts/login/';});};
++document.addEventListener('input',e=>{
++ if(!e.target.matches('[data-note]'))return;
++ const f=forms?.tasks[e.target.dataset.note];if(!f)return;
++ f.note=e.target.value;
++ try{saveForms();}catch(err){el('status').textContent=err.message;}
++});
++document.addEventListener('submit',e=>{
++ if(!e.target.matches('[data-task]'))return;e.preventDefault();
++ // Read the actual field now, before any queued render or cross-tab update.
++ const id=e.target.dataset.task,scope=tabScope,form=JSON.parse(JSON.stringify(forms.tasks[id]));
++ const note=e.target.querySelector('textarea').value;
++ if(Object.hasOwn(form,'note')||note!==String(form.task.note??''))form.note=note;
++ run(async()=>{await engine.enqueue(scope,form);delete forms.tasks[id];saveForms();await render();if(navigator.onLine)await sync();});
++});
+ document.addEventListener('click',e=>{const b=e.target.closest('[data-retry],[data-keep]');if(b)run(async()=>{await engine.resolve(tabScope,b.dataset.retry||b.dataset.keep,!!b.dataset.retry);await sync();});});
+ window.addEventListener('storage',e=>{if(e.key===GardenOffline.KEY||e.key==='garden.m2.stop')engine.view().then(v=>{if(v.active!==tabScope)render();else if(!busy && document.activeElement?.tagName!=='TEXTAREA')render();});});
+ window.addEventListener('online',()=>run(sync));
+--- a/garden/templates/garden/index.html
++++ b/garden/templates/garden/index.html
+@@ -14,8 +14,8 @@
+   <link rel="apple-touch-icon" href="{% static 'garden/icons/icon-192.png' %}">
+   <link rel="stylesheet" href="{% static 'garden/app.css' %}?v=20260926jobs1">
+   <title>Trädgårdsrytmen · Din trädgård, i din takt</title>
+-  <script src="/static/garden/offline-core.js?v=m2-5" defer></script>
+-  <script src="/static/garden/offline-session.js?v=m2-5" defer></script>
++  <script src="/static/garden/offline-core.js?v=m2-6" defer></script>
++  <script src="/static/garden/offline-session.js?v=m2-6" defer></script>
+ </head>
+ <body data-web-context="{{ web_context }}" data-account-id="{{ account_id }}" data-garden-id="{{ garden_id }}">
+   {% include 'garden/symbols.html' %}
+--- a/garden/templates/garden/select_garden.html
++++ b/garden/templates/garden/select_garden.html
+@@ -6,8 +6,8 @@
+   <meta name="viewport" content="width=device-width,initial-scale=1">
+   <link rel="stylesheet" href="{% static 'garden/app.css' %}?v=20260926p3">
+   <title>Välj trädgård · Trädgårdsrytmen</title>
+-  <script src="/static/garden/offline-core.js?v=m2-5" defer></script>
+-  <script src="/static/garden/offline-session.js?v=m2-5" defer></script>
++  <script src="/static/garden/offline-core.js?v=m2-6" defer></script>
++  <script src="/static/garden/offline-session.js?v=m2-6" defer></script>
+ </head>
+ <body class="login-page">
+   <main class="login-card">
+--- a/garden/templates/registration/login.html
++++ b/garden/templates/registration/login.html
+@@ -7,8 +7,8 @@
+   <meta name="theme-color" content="#284e3b">
+   <link rel="stylesheet" href="{% static 'garden/app.css' %}?v=20260926p3">
+   <title>Logga in · Trädgårdsrytmen</title>
+-  <script src="/static/garden/offline-core.js?v=m2-5" defer></script>
+-  <script src="/static/garden/offline-session.js?v=m2-5" defer></script>
++  <script src="/static/garden/offline-core.js?v=m2-6" defer></script>
++  <script src="/static/garden/offline-session.js?v=m2-6" defer></script>
+ </head>
+ <body class="login-page">
+   <main class="login-card">
+--- a/garden/test_pwa.py
++++ b/garden/test_pwa.py
+@@ -93,3 +93,33 @@
+         self.client.post('/gardens/select/',{'garden_id':str(self.other.public_id)},HTTP_X_CSRFTOKEN=self.client.cookies['csrftoken'].value)
+         self.assertNotEqual(self.client.cookies['garden_session_boundary'].value,marker)
+         self.assertEqual(self.post().status_code,409)
++
++    def test_anonymous_shell_logout_can_bootstrap_current_csrf_from_login(self):
++        client = Client(enforce_csrf_checks=True)
++        response = client.get('/worklist/')
++        self.assertEqual(response.status_code, 200)
++        self.assertIn(b'Arbetslista', b''.join(response.streaming_content))
++        self.assertNotIn('csrftoken', client.cookies)
++        self.assertEqual(client.post('/accounts/logout/', HTTP_X_CSRFTOKEN='').status_code, 403)
++        self.assertEqual(client.get('/accounts/login/').status_code, 200)
++        token = client.cookies['csrftoken'].value
++        self.assertEqual(client.post('/accounts/logout/', HTTP_X_CSRFTOKEN=token).status_code, 302)
++        self.assertEqual(IdempotencyRecord.objects.count(), 0)
++
++    def test_pending_logout_requires_rotated_csrf_but_keeps_membership(self):
++        old_token = self.client.cookies['csrftoken'].value
++        grant = self.member.pk
++        response = self.client.post('/accounts/login/', {
++            'username': 'm2-a', 'password': 'synthetic-test-only',
++            'csrfmiddlewaretoken': old_token,
++        })
++        self.assertEqual(response.status_code, 302)
++        current = self.client.cookies['csrftoken'].value
++        self.assertNotEqual(current, old_token)
++        self.assertEqual(self.client.post('/accounts/logout/', HTTP_X_CSRFTOKEN=old_token).status_code, 403)
++        self.assertEqual(self.client.get('/accounts/login/').status_code, 200)
++        self.assertEqual(self.client.post('/accounts/logout/', HTTP_X_CSRFTOKEN=self.client.cookies['csrftoken'].value).status_code, 302)
++        self.assertEqual(GardenMembership.objects.get(user=self.a, garden=self.g).pk, grant)
++        self.task.refresh_from_db()
++        self.assertEqual(self.task.version, 1)
++        self.assertEqual(IdempotencyRecord.objects.count(), 0)
+--- a/tests/pwa-http-driver.cjs
++++ b/tests/pwa-http-driver.cjs
+@@ -10,6 +10,6 @@
+ };
+ const e=create({storage,locks:{request:(_,fn)=>fn()},fetch:transport,origin:f.base,boundary:()=>f.boundary,uuid:randomUUID});
+ (async()=>{
+- if(phase==='queue'){const id=await e.activate();await e.refresh(id);await e.draft(id,f.task,'');await e.enqueue(id,f.task);assert.equal((await e.view()).data.snapshot.tasks[0].status,'pending');}
++ if(phase==='queue'){const id=await e.activate();await e.refresh(id);const task=(await e.view()).data.snapshot.tasks.find(t=>t.id===f.task);await e.enqueue(id,{task,note:''});assert.equal((await e.view()).data.snapshot.tasks[0].status,'pending');}
+  else {const v=await e.view();await e.sync(v.active);const after=await e.view();assert.equal(after.data.queue.length,0);assert.equal(after.data.archive[0].result.note,'');assert.equal(after.data.archive[0].result.version,2);}
+ })().catch(e=>{console.error(e);process.exit(1)});
+--- a/tests/pwa-offline.test.cjs
++++ b/tests/pwa-offline.test.cjs
+@@ -1,7 +1,7 @@
+ const {test}=require('node:test');const assert=require('node:assert/strict');
+ const {create,KEY,WEEK}=require('../garden/static/garden/offline-core.js');
+ function harness(){
+- let raw=null,clock=1000,serial=0,tail=Promise.resolve(),offline=false,drop=false,marker='one';
++ let raw=null,clock=1000,serial=0,tail=Promise.resolve(),offline=false,drop=false,marker='one',csrf='csrf',serverCsrf='csrf',logoutHook=null;
+  let context={protocol:1,account:'a',garden:'g',membership:1,token:'signed',csrf:'csrf',boundary:'one'};
+  let beforeCommit=null;let beforeReceipt=null;
+  let task={id:'task',garden_id:'g',title:'Vattna',version:1,status:'pending',note:'Bevara'};
+@@ -12,7 +12,8 @@
+  const fetch=async(path,opts)=>{
+   calls.push({path,opts});if(offline)throw Error('offline');
+   if(path==='/api/pwa/context/')return response(context);
+-  if(path==='/accounts/logout/')return {ok:true};
++  if(path==='/accounts/login/'){csrf=serverCsrf;return {ok:true};}
++  if(path==='/accounts/logout/'){if(logoutHook)logoutHook();return {ok:opts.headers['X-CSRFToken']===serverCsrf,status:opts.headers['X-CSRFToken']===serverCsrf?200:403};}
+   if(opts.headers['X-Garden-Context']!==context.token)return response({code:'context_changed'},409);
+   if(path==='/api/pwa/snapshot/')return response({protocol:1,tasks:[task]});
+   const body=JSON.parse(opts.body);
+@@ -25,41 +26,207 @@
+   task={...task,status:'completed',version:task.version+1,note:body.note??task.note};receipts.set(key,task);
+   if(drop){drop=false;throw Error('lost after commit');}return response(task);
+  };
+- const client=()=>create({storage,locks,fetch,now:()=>clock,uuid:()=>`key-${++serial}`,origin:'test',boundary:()=>marker});
+- return {client,storage,calls,receipts,set beforeCommit(v){beforeCommit=v},set beforeReceipt(v){beforeReceipt=v},get raw(){return JSON.parse(raw)},set offline(v){offline=v},set drop(v){drop=v},set time(v){clock=v},set task(v){task={...task,...v}},set marker(v){marker=v},set context(v){context={...context,...v}}};
++ const client=()=>create({storage,locks,fetch,now:()=>clock,uuid:()=>`key-${++serial}`,origin:'test',boundary:()=>marker,csrf:()=>csrf});
++ return {client,storage,calls,receipts,set csrf(v){csrf=v},set serverCsrf(v){serverCsrf=v},set logoutHook(v){logoutHook=v},set beforeCommit(v){beforeCommit=v},set beforeReceipt(v){beforeReceipt=v},get raw(){return JSON.parse(raw)},set offline(v){offline=v},set drop(v){drop=v},set time(v){clock=v},set task(v){task={...task,...v}},set marker(v){marker=v},set context(v){context={...context,...v}}};
+ }
++async function form(e,note){const t=(await e.view()).data.snapshot.tasks[0];return {task:t,...(note===undefined?{}:{note})};}
+ async function ready(h){const e=h.client();const id=await e.activate();await e.refresh(id);return [e,id];}
+ test('offline queue and untouched note survive engine restart; confirmed history only after sync',async()=>{
+- const h=harness();let[e,id]=await ready(h);h.offline=true;await e.enqueue(id,'task');assert.equal((await e.view()).data.snapshot.tasks[0].status,'pending');
++ const h=harness();let[e,id]=await ready(h);h.offline=true;await e.enqueue(id,await form(e));assert.equal((await e.view()).data.snapshot.tasks[0].status,'pending');
+  assert.equal(h.raw.scopes[id].queue[0].body,'{"expected_version":1}');e=h.client();assert.equal((await e.view()).data.queue.length,1);h.offline=false;await e.sync(id);assert.equal((await e.view()).data.snapshot.tasks[0].note,'Bevara');assert.equal(h.receipts.size,1);
+ });
+-test('explicit empty note preserved across reload',async()=>{const h=harness();const[e,id]=await ready(h);await e.draft(id,'task','');await h.client().enqueue(id,'task');await e.sync(id);assert.equal((await e.view()).data.snapshot.tasks[0].note,'');});
+-test('lost response after commit reconciles with original key and no second mutation',async()=>{const h=harness();let[e,id]=await ready(h);const key=await e.enqueue(id,'task');h.drop=true;await assert.rejects(e.sync(id));const frozen=h.raw.scopes[id].queue[0].body;e=h.client();await e.sync(id);assert.equal(h.receipts.size,1);assert.equal(h.calls.filter(c=>c.path.endsWith('/complete/')).length,1);assert.equal(h.raw.scopes[id].archive[0].key,key);assert.equal(h.raw.scopes[id].archive[0].body,frozen);});
+-test('two independent clients cannot overwrite journal or duplicate same task',async()=>{const h=harness();const[a,id]=await ready(h);const b=h.client();const r=await Promise.allSettled([a.enqueue(id,'task'),b.enqueue(id,'task')]);assert.equal(r.filter(x=>x.status==='fulfilled').length,1);await Promise.all([a.sync(id),b.sync(id)]);assert.equal(h.receipts.size,1);});
+-test('seven day unknown is read-only on every retry, even after restart',async()=>{const h=harness();const[e,id]=await ready(h);await e.enqueue(id,'task');h.time=WEEK+1000;await e.sync(id);await h.client().sync(id);assert.equal(h.calls.filter(c=>c.path.endsWith('/complete/')).length,0);assert.equal((await e.view()).data.queue[0].state,'uncertain');});
+-test('conflict fetches current state; explicit rebase creates one new key retaining edited note',async()=>{const h=harness();const[e,id]=await ready(h);await e.draft(id,'task','Lokal');const old=await e.enqueue(id,'task');h.task={version:2,note:'Ny serveranteckning'};await e.sync(id);const q=(await e.view()).data.queue[0];assert.equal(q.current.note,'Ny serveranteckning');assert.equal(h.receipts.size,0);await e.resolve(id,old,true);await e.sync(id);assert.equal(h.receipts.size,1);assert.equal((await e.view()).data.snapshot.tasks[0].note,'Lokal');});
+-test('untouched note on explicit conflict retry keeps new server note',async()=>{const h=harness();const[e,id]=await ready(h);const k=await e.enqueue(id,'task');h.task={version:2,note:'Ny'};await e.sync(id);await e.resolve(id,k,true);await e.sync(id);assert.equal((await e.view()).data.snapshot.tasks[0].note,'Ny');});
+-test('offline logout hides snapshot, retains intent, and blocks activation until server logout completes',async()=>{const h=harness();const[e,id]=await ready(h);const k=await e.enqueue(id,'task');h.offline=true;await assert.rejects(e.logout());assert.equal((await e.view()).data,null);assert.equal(h.raw.scopes[id].queue[0].key,k);assert.equal(h.raw.scopes[id].snapshot,null);await assert.rejects(e.activate());h.offline=false;await assert.rejects(e.activate(),/Logga in/);assert.equal((await e.view()).logout,false);});
+-test('old page login boundary invalidates offline display and mutation',async()=>{const h=harness();const[e,id]=await ready(h);await e.enqueue(id,'task');h.marker='two';assert.equal((await e.view()).data,null);await assert.rejects(e.sync(id));assert.equal(h.receipts.size,0);});
+-test('account, garden and recreated membership cannot adopt old queue',async()=>{const h=harness();const[e,id]=await ready(h);await e.enqueue(id,'task');h.context={account:'b',garden:'other',membership:2,token:'new'};const b=await e.activate();assert.notEqual(id,b);assert.equal((await e.view()).data.queue.length,0);await assert.rejects(e.sync(id));h.context={account:'a',garden:'g',membership:3,token:'recreated'};await e.activate();assert.equal((await e.view()).data.queue.length,0);assert.equal((await e.view()).held.length,1);assert.equal(h.raw.scopes[id].queue.length,1);});
+-test('unwritable journal or missing locks never sends mutation',async()=>{const h=harness();const[e,id]=await ready(h);h.storage.setItem=()=>{throw Error('quota');};await assert.rejects(e.enqueue(id,'task'),/quota/);assert.equal(h.receipts.size,0);await assert.rejects(create({storage:h.storage,fetch:()=>{throw Error('must not fetch')}}).activate(),/lagring/);});
++test('explicit empty queued note preserved across engine restart',async()=>{const h=harness();const[e,id]=await ready(h);await e.enqueue(id,await form(e,''));await h.client().sync(id);assert.equal((await e.view()).data.snapshot.tasks[0].note,'');});
++test('lost response after commit reconciles with original key and no second mutation',async()=>{const h=harness();let[e,id]=await ready(h);const key=await e.enqueue(id,await form(e));h.drop=true;await assert.rejects(e.sync(id));const frozen=h.raw.scopes[id].queue[0].body;e=h.client();await e.sync(id);assert.equal(h.receipts.size,1);assert.equal(h.calls.filter(c=>c.path.endsWith('/complete/')).length,1);assert.equal(h.raw.scopes[id].archive[0].key,key);assert.equal(h.raw.scopes[id].archive[0].body,frozen);});
++test('two independent clients cannot overwrite journal or duplicate same task',async()=>{const h=harness();const[a,id]=await ready(h);const b=h.client();const r=await Promise.allSettled([a.enqueue(id,await form(a)),b.enqueue(id,await form(b))]);assert.equal(r.filter(x=>x.status==='fulfilled').length,1);await Promise.all([a.sync(id),b.sync(id)]);assert.equal(h.receipts.size,1);});
++test('seven day unknown is read-only on every retry, even after restart',async()=>{const h=harness();const[e,id]=await ready(h);await e.enqueue(id,await form(e));h.time=WEEK+1000;await e.sync(id);await h.client().sync(id);assert.equal(h.calls.filter(c=>c.path.endsWith('/complete/')).length,0);assert.equal((await e.view()).data.queue[0].state,'uncertain');});
++test('conflict fetches current state; explicit rebase creates one new key retaining edited note',async()=>{const h=harness();const[e,id]=await ready(h);const old=await e.enqueue(id,await form(e,'Lokal'));h.task={version:2,note:'Ny serveranteckning'};await e.sync(id);const q=(await e.view()).data.queue[0];assert.equal(q.current.note,'Ny serveranteckning');assert.equal(h.receipts.size,0);await e.resolve(id,old,true);await e.sync(id);assert.equal(h.receipts.size,1);assert.equal((await e.view()).data.snapshot.tasks[0].note,'Lokal');});
++test('untouched note on explicit conflict retry keeps new server note',async()=>{const h=harness();const[e,id]=await ready(h);const k=await e.enqueue(id,await form(e));h.task={version:2,note:'Ny'};await e.sync(id);await e.resolve(id,k,true);await e.sync(id);assert.equal((await e.view()).data.snapshot.tasks[0].note,'Ny');});
++test('offline logout hides snapshot, retains intent, and blocks activation until server logout completes',async()=>{const h=harness();const[e,id]=await ready(h);const k=await e.enqueue(id,await form(e));h.offline=true;await assert.rejects(e.logout());assert.equal((await e.view()).data,null);assert.equal(h.raw.scopes[id].queue[0].key,k);assert.equal(h.raw.scopes[id].snapshot,null);await assert.rejects(e.activate());h.offline=false;await assert.rejects(e.activate(),/Logga in/);assert.equal((await e.view()).logout,false);});
++test('old page login boundary invalidates offline display and mutation',async()=>{const h=harness();const[e,id]=await ready(h);await e.enqueue(id,await form(e));h.marker='two';assert.equal((await e.view()).data,null);await assert.rejects(e.sync(id));assert.equal(h.receipts.size,0);});
++test('account, garden and recreated membership cannot adopt old queue',async()=>{const h=harness();const[e,id]=await ready(h);await e.enqueue(id,await form(e));h.context={account:'b',garden:'other',membership:2,token:'new'};const b=await e.activate();assert.notEqual(id,b);assert.equal((await e.view()).data.queue.length,0);await assert.rejects(e.sync(id));h.context={account:'a',garden:'g',membership:3,token:'recreated'};await e.activate();assert.equal((await e.view()).data.queue.length,0);assert.equal((await e.view()).held.length,1);assert.equal(h.raw.scopes[id].queue.length,1);});
++test('unwritable journal or missing locks never sends mutation',async()=>{const h=harness();const[e,id]=await ready(h);h.storage.setItem=()=>{throw Error('quota');};await assert.rejects(e.enqueue(id,await form(e)),/quota/);assert.equal(h.receipts.size,0);await assert.rejects(create({storage:h.storage,fetch:()=>{throw Error('must not fetch')}}).activate(),/lagring/);});
+ test('corrupt storage does not silently reset intentions',async()=>{const h=harness();h.storage.setItem(KEY,'{');await assert.rejects(h.client().activate());assert.equal(h.calls.length,0);});
+ test('logout in another client fences the rest of a batch while first request finishes',async()=>{
+- const h=harness(),[e,id]=await ready(h);await e.enqueue(id,'task');
++ const h=harness(),[e,id]=await ready(h);await e.enqueue(id,await form(e));
+  const d=h.raw;d.scopes[id].queue.push({...d.scopes[id].queue[0],key:'second',task:{...d.scopes[id].queue[0].task,id:'second'}});h.storage.setItem(KEY,JSON.stringify(d));
+  let started,release;const entered=new Promise(r=>started=r),blocked=new Promise(r=>release=r);h.beforeCommit=async()=>{started();await blocked;};
+  const sync=e.sync(id);await entered;const logout=h.client().logout();release();await Promise.all([sync,logout]);
+  assert.equal(h.calls.filter(c=>c.path.endsWith('/complete/')).length,1);assert.equal(h.raw.scopes[id].queue.length,1);assert.equal((await e.view()).data,null);
+ });
+ test('seven-day boundary is checked again after a slow reconciliation',async()=>{
+- const h=harness(),[e,id]=await ready(h);await e.enqueue(id,'task');h.offline=true;await assert.rejects(e.sync(id));h.offline=false;
++ const h=harness(),[e,id]=await ready(h);await e.enqueue(id,await form(e));h.offline=true;await assert.rejects(e.sync(id));h.offline=false;
+  const before=h.calls.filter(c=>c.path.endsWith('/complete/')).length;h.beforeReceipt=()=>{h.time=WEEK+1000;};await e.sync(id);
+  assert.equal(h.calls.filter(c=>c.path.endsWith('/complete/')).length,before);
+ });
+ test('revocation clears display but preserves the frozen uncertain request',async()=>{
+- const h=harness(),[e,id]=await ready(h);const key=await e.enqueue(id,'task');h.context={token:'revoked'};await assert.rejects(e.sync(id));assert.equal((await e.view()).data,null);assert.equal(h.raw.scopes[id].snapshot,null);assert.equal(h.raw.scopes[id].queue[0].key,key);
++ const h=harness(),[e,id]=await ready(h);const key=await e.enqueue(id,await form(e));h.context={token:'revoked'};await assert.rejects(e.sync(id));assert.equal((await e.view()).data,null);assert.equal(h.raw.scopes[id].snapshot,null);assert.equal(h.raw.scopes[id].queue[0].key,key);
+ });
+
+ test('revoked access during explicit conflict resolution hides cached data and retains intent',async()=>{
+- const h=harness(),[e,id]=await ready(h);const key=await e.enqueue(id,'task');h.task={version:2};await e.sync(id);h.context={token:'revoked'};await assert.rejects(e.resolve(id,key,true));assert.equal((await e.view()).data,null);assert.equal(h.raw.scopes[id].queue[0].key,key);
+-});
++ const h=harness(),[e,id]=await ready(h);const key=await e.enqueue(id,await form(e));h.task={version:2};await e.sync(id);h.context={token:'revoked'};await assert.rejects(e.resolve(id,key,true));assert.equal((await e.view()).data,null);assert.equal(h.raw.scopes[id].queue[0].key,key);
++});
++
++test('other tab refresh cannot upgrade the version of the displayed form',async()=>{
++ const h=harness(),[a,id]=await ready(h),b=h.client();
++ const shown=await form(a,'Text A');
++ h.task={version:2,note:'Ny serveranteckning'};await b.refresh(id);
++ await a.enqueue(id,shown);assert.deepEqual(JSON.parse(h.raw.scopes[id].queue[0].body),{expected_version:1,note:'Text A'});
++ await a.sync(id);assert.equal(h.receipts.size,0);assert.equal(h.raw.scopes[id].queue[0].state,'conflict');
++ assert.equal(h.raw.scopes[id].queue[0].current.note,'Ny serveranteckning');
++});
++test('another tab note and caller edits while waiting for lock cannot replace submitted intent',async()=>{
++ const h=harness(),[a,id]=await ready(h),b=h.client();
++ const fa=await form(a,'Text A'),fb=await form(b,'Text B');
++ const submitting=a.enqueue(id,fa);fa.note=fb.note;fa.task.version=42;
++ await submitting;assert.deepEqual(JSON.parse(h.raw.scopes[id].queue[0].body),{expected_version:1,note:'Text A'});
++ await assert.rejects(b.enqueue(id,fb),/redan/);await a.sync(id);
++ assert.equal(h.raw.scopes[id].archive[0].result.note,'Text A');
++});
++test('missing form context is rejected instead of adopting shared snapshot or drafts',async()=>{
++ const h=harness(),[e,id]=await ready(h);await assert.rejects(e.enqueue(id,'task'),/Hämta/);
++ await assert.rejects(e.enqueue(id,{task:{...(await form(e)).task,garden_id:'other'}}),/Hämta/);
++ assert.equal(h.raw.scopes[id].queue.length,0);assert.equal(h.receipts.size,0);
++});
++test('anonymous logout with no CSRF bootstraps token and clears local fence',async()=>{
++ const h=harness(),e=h.client();h.csrf='';await e.logout();
++ assert.deepEqual(h.calls.map(c=>c.path),['/accounts/login/','/accounts/logout/']);
++ assert.equal(h.calls[1].opts.headers['X-CSRFToken'],'csrf');assert.equal((await e.view()).logout,false);
++});
++for(const initial of ['', 'old-token']) test(`pending logout recovers current CSRF after restart (${initial||'missing'})`,async()=>{
++ const h=harness(),[e,id]=await ready(h);await e.enqueue(id,await form(e,'Keep'));
++ const frozen=structuredClone(h.raw.scopes[id]);h.csrf=initial;h.offline=true;await assert.rejects(e.logout());
++ h.csrf='rotated';h.serverCsrf='rotated';h.offline=false;
++ await assert.rejects(h.client().activate(),/Logga in/);
++ assert.equal((await e.view()).logout,false);assert.equal(h.calls.at(-1).opts.headers['X-CSRFToken'],'rotated');
++ assert.deepEqual(h.raw.scopes[id].queue,frozen.queue);assert.deepEqual(h.raw.scopes[id].context,frozen.context);
++});
++test('403 token rotation during logout has one bounded retry with fresh cookie',async()=>{
++ const h=harness(),[e]=await ready(h);
++ h.logoutHook=()=>{h.serverCsrf='new';h.logoutHook=null;};await e.logout();
++ const posts=h.calls.filter(c=>c.path==='/accounts/logout/');
++ assert.deepEqual(posts.map(c=>c.opts.headers['X-CSRFToken']),['csrf','new']);assert.equal((await e.view()).logout,false);
++});
++test('persistent logout 403 retains fence and queue; later retry can recover',async()=>{
++ const h=harness(),[e,id]=await ready(h);await e.enqueue(id,await form(e));
++ let serial=0;h.logoutHook=()=>{h.serverCsrf=`rotation-${++serial}`;};await assert.rejects(e.logout());
++ assert.equal(serial,2);assert.equal((await e.view()).logout,true);assert.equal(h.raw.scopes[id].queue.length,1);
++ h.logoutHook=null;h.csrf='valid';h.serverCsrf='valid';await h.client().logout();assert.equal((await e.view()).logout,false);
++});
++test('seven day fence survives clock adjustment and restart; later confirmed receipt still resolves',async()=>{
++ const h=harness(),[e,id]=await ready(h),key=await e.enqueue(id,await form(e));
++ const body=h.raw.scopes[id].queue[0].body;h.time=WEEK+1000;await e.sync(id);
++ assert.equal(h.raw.scopes[id].queue[0].readOnlyReason,'age_limit');h.time=WEEK;await h.client().sync(id);
++ assert.equal(h.calls.filter(c=>c.path.endsWith('/complete/')).length,0);
++ assert.equal(h.calls.filter(c=>c.path==='/api/pwa/reconcile/').length,2);
++ assert.equal(h.raw.scopes[id].queue[0].key,key);assert.equal(h.raw.scopes[id].queue[0].body,body);
++ h.receipts.set(key,{id:'task',garden_id:'g',status:'completed',version:2,note:'Bevara'});
++ await h.client().sync(id);assert.equal(h.raw.scopes[id].queue.length,0);assert.equal(h.raw.scopes[id].archive[0].key,key);
++});
++test('time fence is durable even when first receipt lookup fails',async()=>{
++ const h=harness(),[e,id]=await ready(h);await e.enqueue(id,await form(e));h.time=WEEK+1000;h.offline=true;
++ await assert.rejects(e.sync(id));h.offline=false;h.time=2000;await h.client().sync(id);
++ assert.equal(h.calls.filter(c=>c.path.endsWith('/complete/')).length,0);assert.equal(h.raw.scopes[id].queue[0].readOnlyReason,'age_limit');
++});
++test('backwards clock fence survives time recovery and restart',async()=>{
++ const h=harness(),[e,id]=await ready(h);await e.enqueue(id,await form(e));h.time=999;await e.sync(id);
++ h.time=2000;await h.client().sync(id);assert.equal(h.raw.scopes[id].queue[0].readOnlyReason,'clock_rollback');
++ assert.equal(h.calls.filter(c=>c.path.endsWith('/complete/')).length,0);
++});
++test('rollback above creation time is detected from persisted last observed time',async()=>{
++ const h=harness(),[e,id]=await ready(h);await e.enqueue(id,await form(e));h.time=3000;h.offline=true;await assert.rejects(e.sync(id));
++ const attempts=h.calls.filter(c=>c.path.endsWith('/complete/')).length;
++ h.offline=false;h.time=2000;await h.client().sync(id);h.time=4000;await h.client().sync(id);
++ assert.equal(h.raw.scopes[id].queue[0].readOnlyReason,'clock_rollback');assert.equal(h.calls.filter(c=>c.path.endsWith('/complete/')).length,attempts);
++});
++
++// Execute shipped UI scripts with a deliberately small DOM adapter. These are
++// wiring/regression tests, not claims of real browser or installed PWA coverage.
++const vm=require('node:vm'),fs=require('node:fs');
++const worklistSource=fs.readFileSync(require.resolve('../garden/static/garden/worklist.js'),'utf8');
++const sessionSource=fs.readFileSync(require.resolve('../garden/static/garden/offline-session.js'),'utf8');
++function tabStorage(){const entries=new Map();return {getItem:k=>entries.get(k)||null,setItem:(k,v)=>entries.set(k,v),removeItem:k=>entries.delete(k)};}
++function ui(h,e,sessionStorage=tabStorage()){
++ const events={},windowEvents={},elements={};
++ const node=()=>({innerHTML:'',textContent:'',hidden:false,querySelector(){return this.child??=node();}});
++ for(const id of ['open','refresh','signin','held','identity','fetched','pending','tasks','history','status','logout'])elements[id]=node();
++ const document={getElementById:id=>elements[id],addEventListener:(name,fn)=>events[name]=fn,activeElement:null,querySelector:()=>null};
++ const context=vm.createContext({GardenOffline:{create:()=>e,KEY,WEEK},localStorage:h.storage,sessionStorage,document,
++  navigator:{onLine:false,locks:{}},location:{origin:'test'},window:{fetch:()=>{},addEventListener:(name,fn)=>windowEvents[name]=fn}});
++ vm.runInContext(worklistSource,context);
++ const done=()=>vm.runInContext('operations',context);
++ const input=value=>{document.activeElement={tagName:'TEXTAREA'};events.input({target:{matches:()=>true,dataset:{note:'task'},value}});};
++ const submit=value=>{events.submit({preventDefault(){},target:{matches:()=>true,dataset:{task:'task'},querySelector:()=>({value})}});return done();};
++ return {done,input,submit,sessionStorage,elements,render:()=>vm.runInContext('render()',context),async storageChanged(){windowEvents.storage({key:KEY});await new Promise(r=>setImmediate(r));await done();}};
++}
++test('shipped UI submits displayed version after another tab refresh while textarea has focus',async()=>{
++ const h=harness(),[a,id]=await ready(h),ua=ui(h,a),ub=ui(h,h.client());await Promise.all([ua.done(),ub.done()]);
++ ua.input('Text A');h.task={version:2,note:'Ny serveranteckning'};await h.client().refresh(id);await ub.render();await ua.storageChanged();
++ assert.match(ua.elements.tasks.innerHTML,/Bevara/);assert.match(ub.elements.tasks.innerHTML,/Ny serveranteckning/);
++ await ua.submit('Text A');assert.deepEqual(JSON.parse(h.raw.scopes[id].queue[0].body),{expected_version:1,note:'Text A'});
++ await a.sync(id);assert.equal(h.raw.scopes[id].queue[0].state,'conflict');assert.equal(h.receipts.size,0);
++});
++test('shipped UI uses own field when two tabs edit the same task',async()=>{
++ const h=harness(),[a,id]=await ready(h),ua=ui(h,a),ub=ui(h,h.client());await Promise.all([ua.done(),ub.done()]);
++ ua.input('Text A');ub.input('Text B');await ua.storageChanged();await ua.submit('Text A');
++ assert.deepEqual(JSON.parse(h.raw.scopes[id].queue[0].body),{expected_version:1,note:'Text A'});
++ await ub.submit('Text B');assert.equal(h.raw.scopes[id].queue.length,1);assert.match(ub.elements.status.textContent,/redan/);
++});
++for(const edited of [false,true])test(`shipped UI preserves ${edited?'explicit empty':'untouched'} note across rerender and tab reload`,async()=>{
++ const h=harness(),[e,id]=await ready(h),first=ui(h,e);await first.done();if(edited)first.input('');
++ await first.render();const reloaded=ui(h,h.client(),first.sessionStorage);await reloaded.done();
++ await reloaded.submit(edited?'':'Bevara');const body=JSON.parse(h.raw.scopes[id].queue[0].body);
++ assert.equal(Object.hasOwn(body,'note'),edited);if(edited)assert.equal(body.note,'');
++});
++test('shipped UI keeps draft and its original version through refresh and reload',async()=>{
++ const h=harness(),[e,id]=await ready(h),first=ui(h,e);await first.done();first.input('Original draft');
++ h.task={version:2,note:'Server version 2'};await e.refresh(id);await first.render();
++ const reloaded=ui(h,h.client(),first.sessionStorage);await reloaded.done();await reloaded.submit('Original draft');
++ assert.deepEqual(JSON.parse(h.raw.scopes[id].queue[0].body),{expected_version:1,note:'Original draft'});
++});
++test('shipped UI clears tab drafts at logout and cannot restore them across session boundary',async()=>{
++ const h=harness(),[e]=await ready(h),first=ui(h,e);await first.done();first.input('Private');
++ h.offline=true;await assert.rejects(e.logout());await first.render();assert.equal(first.sessionStorage.getItem('garden.m2.forms.v1'),null);
++ assert.equal(first.elements.tasks.innerHTML,'');
++});
++test('shipped login gate retries failed pending logout before submitting login',async()=>{
++ const h=harness(),[e,id]=await ready(h);await e.enqueue(id,await form(e));h.offline=true;await assert.rejects(e.logout());
++ let submit,submissions=0;
++ const document={cookie:'csrftoken=rotated',body:{dataset:{}},addEventListener:(name,fn)=>{if(name==='submit')submit=fn;},getElementById:()=>null,createElement:()=>({setAttribute(){}})};
++ const context=vm.createContext({GardenOffline:{create:()=>h.client(),KEY},localStorage:h.storage,navigator:{locks:{request(){}}},
++  document,window:{fetch(){}},location:{origin:'test',pathname:'/accounts/login/',href:'https://test/accounts/login/'},URL,
++  HTMLFormElement:{prototype:{submit(){assert.equal(h.raw.logout,false);assert.equal(h.storage.getItem('garden.m2.stop'),null);submissions++;}}}});
++ vm.runInContext(sessionSource,context);await new Promise(r=>setImmediate(r));
++ const csrfField={value:'old'};const target={action:'https://test/accounts/login/',append(){},querySelector:()=>csrfField};
++ submit({preventDefault(){},target});await new Promise(r=>setImmediate(r));assert.equal(submissions,0);
++ h.offline=false;h.csrf='rotated';h.serverCsrf='rotated';submit({preventDefault(){},target});await new Promise(r=>setImmediate(r));
++ assert.equal(submissions,1);assert.equal(csrfField.value,'rotated');assert.equal(h.raw.scopes[id].queue.length,1);assert.equal(h.raw.active,null);
++});
++
++test('age limit crossed during failed receipt lookup persists before a later clock rollback',async()=>{
++ const h=harness(),[e,id]=await ready(h);await e.enqueue(id,await form(e));h.offline=true;await assert.rejects(e.sync(id));h.offline=false;
++ const attempts=h.calls.filter(c=>c.path.endsWith('/complete/')).length;
++ h.beforeReceipt=()=>{h.time=WEEK+1000;throw Error('receipt lost');};await assert.rejects(e.sync(id));
++ assert.equal(h.raw.scopes[id].queue[0].readOnlyReason,'age_limit');h.time=2000;h.beforeReceipt=null;await h.client().sync(id);
++ assert.equal(h.calls.filter(c=>c.path.endsWith('/complete/')).length,attempts);
++});
++test('failure to persist a time fence prevents transport',async()=>{
++ const h=harness(),[e,id]=await ready(h);await e.enqueue(id,await form(e));h.time=WEEK+1000;
++ const calls=h.calls.length;h.storage.setItem=()=>{throw Error('quota');};await assert.rejects(e.sync(id),/quota/);assert.equal(h.calls.length,calls);
++});
++
++test('shipped UI captures actual field value even without a delivered input event',async()=>{
++ const h=harness(),[e,id]=await ready(h),tab=ui(h,e);await tab.done();await tab.submit('Visible field');
++ assert.deepEqual(JSON.parse(h.raw.scopes[id].queue[0].body),{expected_version:1,note:'Visible field'});
++});
++test('failure to remove session drafts cannot leave private DOM visible after logout',async()=>{
++ const h=harness(),[e]=await ready(h),tab=ui(h,e);await tab.done();tab.input('Private');
++ tab.sessionStorage.removeItem=()=>{throw Error('storage unavailable');};h.offline=true;await assert.rejects(e.logout());await tab.render();
++ assert.equal(tab.elements.tasks.innerHTML,'');assert.equal(tab.elements.pending.innerHTML,'');assert.equal(tab.elements.history.hidden,true);
++});
++test('legacy pending logout with frozen CSRF recovers without changing journal scope',async()=>{
++ const h=harness(),[e,id]=await ready(h);await e.enqueue(id,await form(e));h.offline=true;await assert.rejects(e.logout());
++ const old=h.raw;old.logout={csrf:''};h.storage.setItem(KEY,JSON.stringify(old));
++ h.csrf='new';h.serverCsrf='new';h.offline=false;await h.client().logout();
++ assert.equal(h.calls.at(-1).opts.headers['X-CSRFToken'],'new');assert.equal(h.raw.scopes[id].context.membership,1);
++ assert.equal(h.raw.scopes[id].queue[0].key,old.scopes[id].queue[0].key);assert.equal((await e.view()).logout,false);
++});

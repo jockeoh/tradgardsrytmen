@@ -1,0 +1,13 @@
+- main:
+  - navigation:
+    - link "Trädgårdsrytmen":
+      - /url: /
+    - button "Logga ut"
+  - heading "Arbetslista" [level=1]
+  - paragraph
+  - status: Öppna din inloggade trädgård med nätanslutning.
+  - paragraph
+  - button "Öppna inloggad trädgård"
+  - region "Väntar på synkning"
+  - region "Att göra"
+  - generic "Om offline"

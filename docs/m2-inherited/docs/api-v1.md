@@ -1,44 +1,5 @@
 # API v1: kontrakt för mobilens första flöde
 
-## Privat hemmaapp: implementerat kontraktstillägg 2026-09-27
-
-Detta avsnitt ersätter Auth0-kravet **för den privata hemmaappen**. Den
-leverantörsneutrala OIDC-vägen nedan behålls som separat framtida alternativ.
-Se [leveransens lagrings-, CSRF- och återkallningspolicy](home-app-delivery.md).
-
-- Opt-in `TRADGARDSRYTMEN_PRIVATE_MOBILE_AUTH=1`; ingen publik registrering.
-- `POST /api/v1/auth/login/`, JSON `{username, password}` och
-  `X-Private-Mobile: 1`. Kräver HTTPS med DEBUG av. Browser-Origin måste
-  vara serverns egen eller exakt MOBILE_WEB_ORIGINS. Ger `{token,
-  expires_at, account: {id, display_name}}`. Befintlig Django-identitet används.
-- Token är opakt slumpat `home_...`, servern lagrar hash och bindning till
-  aktuell lösenordsversion. Absolut 14 dagar, ingen refresh eller rotation.
-  Alla domänanrop använder `Authorization: Bearer <token>`, inga cookies.
-  401 leder till ny login; samma kontos osäkra sparningar behålls.
-- `POST /api/v1/auth/logout/` med Bearer återkallar just detta token och är
-  idempotent. Lösenordsbyte, inaktivering och `revoke_mobile_sessions`
-  återkallar också. Native håller väntande återkallning i säker lagring när
-  nät saknas. Browserpreview lagrar token endast i minnet.
-- Login/logout och läsande reconcile undantas från krav på Idempotency-Key.
-  Domänmutationerna behåller det befintliga idempotenskontraktet.
-- `POST /api/v1/reconcile/`, `{path, key, body}`, autentiserad **läsning**.
-  Söker konto+POST+kanonisk path+key, jämför normaliserad kropp och aktuell
-  trädgårdsbehörighet. Ger `{state:"confirmed", result:<ursprungligt svar>}`
-  eller `{state:"unknown", message:...}` om inget kvitto finns. Fel kropp
-  ger 409, återkallat medlemskap 404. Skapar aldrig objekt eller nytt kvitto.
-  Unknown är inte bevis för att begäran aldrig sparats.
-- CORS tillåts endast för explicit listade origin, aldrig cookiecredentials.
-  Cookiebaserad privat webb och v1 fortsätter kräva Djangos CSRF-kontroll.
-  Alla v1-svar har `Cache-Control: no-store`.
-
-Klienten lagrar konto-/serveravskild fryst avsikt före första nätanropet och
-bekräftat resultat före ny avsikt. Samma konto efter processdöd återanvänder
-samma key/body; sjudagarsgränsen gäller före varje muterande försök.
-Reconcile får användas senare eftersom den aldrig omsänder mutationen.
-Kvitton gallras inte i detta paket. Se leveransen för konkret operatörsväg
-när kvitto saknas. Kontohistorik hämtas alltid från servern.
-
-
 ## Aktuell inriktning 2026-09-27
 
 Användaren prioriterar nu en fungerande hemmaapp och en samlad större
@@ -254,41 +215,3 @@ kräver manuell avstämning vid oklart utfall; samma klientnyckel ger inte någo
 beständig deduplicering där. I köläge återger samma nyckel jobbet och ett
 uncertain-jobb blockerar nya AI-avsikter för växten tills operatörsavstämning.
 Ingen leverantörsidempotens är verifierad.
-
-
-## Reviewrättningar: flikar och serverbyte
-
-Webbpreview kräver Web Locks (HTTPS eller localhost) för journalskrivning.
-Två flikar får inte skriva över varandras avsikter: den andra fliken stoppas
-före nätanrop och behöver ladda om/logga in för att läsa befintlig sparning.
-Äldre kvitton kan inte radera en annan begärans journalrad.
-
-Aktiv inloggning och väntande tokenåterkallningar sparas separat i samma
-säkra lagringspost på native. En otillgänglig gammal server blockerar inte
-ny login. Kön återförsöks vid appstart/återanslutning och utloggning; 401 på
-aktivt konto raderar inte andra servrars väntande återkallningar. Webbpreview
-har fortsatt enbart token/återkallningskö i flikens minne.
-
-## M2-PWA: sessionsadapter 2026-09-29 (lokal implementation)
-
-Den befintliga webben har `/worklist/` med offlinearbetslista. Nya
-sessionsrutter `/api/pwa/context/`, `/api/pwa/snapshot/`,
-`/api/pwa/tasks/<uuid>/complete/` och `/api/pwa/reconcile/` använder CSRF och
-signerad `X-Garden-Context`. `context` utfärdar konto/trädgård/exakt medlemskap,
-protokoll 1, CSRF och en icke-hemlig sessionsgränsmarkör. `snapshot` returnerar
-hela listan med v1-fält, `plant_name` och protokollversion; ingen paginering
-eller implicit trunkering. Inget av dessa läsanrop materialiserar uppgifter
-eller startar AI/push. Samtliga privata svar är `no-store`.
-
-Klarmarkering delegerar till v1 under transaktion och låst medlemskapsrad.
-Kvitton använder **v1:s kanoniska URL**, så avstämning och deduplicering delar
-befintligt kontrakt. Ingen idempotens antas hos äldre `/api/tasks/<int>/`.
-Bearer accepteras inte av PWA:s skriv-/avstämningsadapter. Orörd anteckning
-utelämnas; tom sträng skickas bara efter uttrycklig redigering. Konfliktval
-hämtar på nytt innan eventuell ny, uttryckligen vald begäran skapas.
-
-Klienten skriver fryst kropp, nyckel, tid och kontext beständigt före sändning.
-Återstart läser journalen; skickad/oklar begäran stäms av läsande innan samma
-begäran eventuellt återförs. Vid sjudagarsgränsen eller bakåtställd klocka sker
-bara avstämning. Saknat kvitto ger ingen ny nyckel. Kö/rensning, lokala
-säkerhetsgränser och verifieringsbevis: [M2-PWA](m2-pwa.md).

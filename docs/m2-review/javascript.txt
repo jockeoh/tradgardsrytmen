@@ -1,0 +1,40 @@
+✔ empty current list stays neutral after completing a manual task (1.930875ms)
+✔ focus restoration follows identity, not old row position (0.408292ms)
+✔ complete and undo refresh the open item view (0.70675ms)
+✔ complete and undo refresh the open task view (0.614791ms)
+✔ undo feedback belongs to the modal top layer and does not expire (0.346125ms)
+✔ opening another dialog carries existing undo into that modal (0.2825ms)
+✔ browser-only data is scoped by account and garden (0.066625ms)
+✔ service worker never caches authenticated html or api data (0.0375ms)
+✔ research network retry keeps intent key and does not resend automatically (0.421083ms)
+✔ queued research does not claim proposal is ready (0.355667ms)
+✔ uncertain research clearly requires manual reconciliation (0.318292ms)
+✔ all API reads and writes use immutable page context despite a shared-cookie switch (0.427291ms)
+✔ failed form submission (401) retains original scoped draft and stays open (0.464791ms)
+✔ failed form submission (409) retains original scoped draft and stays open (0.249625ms)
+✔ a newly loaded different account or garden cannot restore the original form draft (0.802917ms)
+✔ reconciled research reports no new transmission and requires a new explicit action (0.250125ms)
+✔ offline queue and untouched note survive engine restart; confirmed history only after sync (1.573541ms)
+✔ explicit empty note preserved across reload (0.229416ms)
+✔ lost response after commit reconciles with original key and no second mutation (0.31525ms)
+✔ two independent clients cannot overwrite journal or duplicate same task (0.173375ms)
+✔ seven day unknown is read-only on every retry, even after restart (0.183791ms)
+✔ conflict fetches current state; explicit rebase creates one new key retaining edited note (0.546042ms)
+✔ untouched note on explicit conflict retry keeps new server note (0.169833ms)
+✔ offline logout hides snapshot, retains intent, and blocks activation until server logout completes (0.318916ms)
+✔ old page login boundary invalidates offline display and mutation (0.114ms)
+✔ account, garden and recreated membership cannot adopt old queue (0.234666ms)
+✔ unwritable journal or missing locks never sends mutation (0.10925ms)
+✔ corrupt storage does not silently reset intentions (0.057ms)
+✔ logout in another client fences the rest of a batch while first request finishes (0.166ms)
+✔ seven-day boundary is checked again after a slow reconciliation (0.1245ms)
+✔ revocation clears display but preserves the frozen uncertain request (0.090542ms)
+✔ revoked access during explicit conflict resolution hides cached data and retains intent (0.10425ms)
+ℹ tests 32
+ℹ suites 0
+ℹ pass 32
+ℹ fail 0
+ℹ cancelled 0
+ℹ skipped 0
+ℹ todo 0
+ℹ duration_ms 40.056458

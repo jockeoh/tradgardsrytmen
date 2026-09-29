@@ -1,0 +1,51 @@
+- main:
+  - navigation:
+    - link "Trädgårdsrytmen":
+      - /url: /
+    - button "Logga ut"
+  - heading "Arbetslista" [level=1]
+  - paragraph: Bobs testträdgård · m2bob
+  - status: Ingen kontakt med servern. Dina handlingar finns kvar här. Synka igen när nätet återkommer.
+  - paragraph: Senast hämtad 2026-09-29 08:37:46
+  - button "Synka nu"
+  - region "Väntar på synkning":
+    - heading "Väntar på synkning" [level=2]
+    - article:
+      - heading "Vattna 1" [level=3]
+      - text: Testros · 2026-09-29
+      - paragraph: Utfallet behöver stämmas av. Synka igen med nät.
+      - paragraph: "Din anteckning: Klart utan nät"
+      - generic "Begäransnyckel"
+      - text: 1986eafb-f74a-412f-b381-1a8325a1d644
+  - region "Att göra":
+    - heading "Att göra" [level=2]
+    - article:
+      - heading "Vattna 2" [level=3]
+      - text: Testros · 2026-09-29
+      - paragraph
+      - text: Anteckning (valfri)
+      - textbox "Anteckning (valfri)": Bevara anteckningen
+      - button "Markera som klar"
+    - article:
+      - heading "Vattna 3" [level=3]
+      - text: Testros · 2026-09-29
+      - paragraph
+      - text: Anteckning (valfri)
+      - textbox "Anteckning (valfri)": Bevara anteckningen
+      - button "Markera som klar"
+    - article:
+      - heading "Vattna 4" [level=3]
+      - text: Testros · 2026-09-29
+      - paragraph
+      - text: Anteckning (valfri)
+      - textbox "Anteckning (valfri)": Bevara anteckningen
+      - button "Markera som klar"
+    - article:
+      - heading "Vattna 5" [level=3]
+      - text: Testros · 2026-09-29
+      - paragraph
+      - text: Anteckning (valfri)
+      - textbox "Anteckning (valfri)": Bevara anteckningen
+      - button "Markera som klar"
+  - generic "Bekräftad historik"
+  - generic "Om offline"

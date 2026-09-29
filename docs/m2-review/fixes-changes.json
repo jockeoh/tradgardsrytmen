@@ -1,0 +1,63 @@
+{
+  "base": "59d4c4c0bcae86778a8b6c54e21371d011679cd9",
+  "changes_from_received_delivery": {
+    "docs/m2-pwa.md": {
+      "before": "1d0198afc3d068388ec07127243df04bdd74defcc7597d3d3c369086a0ec8eea",
+      "after": "3f0ac4a5a123205cb9598358aa004c8046be04961eba0f05369054ea763c027a"
+    },
+    "garden/static/garden/offline-core.js": {
+      "before": "da5d3ddcbbd4e25261aa7b98235a9f608d72d8d40972d5fe145fef5c22093004",
+      "after": "e214ff4a6bf5353528e81c13d1a690ff309f0962b65d0dd91a581f114496c48e"
+    },
+    "garden/static/garden/offline-session.js": {
+      "before": "d2d3996a78a2a5ffa478bd2332c8eab375aebf267ff3ccc98c98b1c41092cd3b",
+      "after": "242705932a4fd5f909d5d54485674f41bb653aa33f53ccbe92f537cd48ed410f"
+    },
+    "garden/static/garden/sw.js": {
+      "before": "c39e4922a598d3860cabd9c903aed67a6669bbf1f954385f3d86b790851de592",
+      "after": "d08f4cde3549e7320c05dd9d68b18a3b61fde6d0fadc7f13aabee35dfcfb53e4"
+    },
+    "garden/static/garden/worklist.html": {
+      "before": "a0c4d3c4f7d90d41e384308e2c723fbed8d7c1d697b89bc6fa15796d4651c05d",
+      "after": "de482a232cc98e3a107089281caef4859554a51de785d3bd05a86a7b46020f1e"
+    },
+    "garden/static/garden/worklist.js": {
+      "before": "0a52a5adbb17e6e8ab94711eff6c56c12bb7d6b48079c0a0ede22a7246fefb9e",
+      "after": "8db978990617ba39a0abcc4574234566824ca0987df40ead20b66863933c4f3a"
+    },
+    "garden/templates/garden/index.html": {
+      "before": "ca3229b8a6e40593be32ddcdd37b43e58e00d675887fd428cd7d1092fa341292",
+      "after": "35c02058c88b660a71ac011e2632e4d49d6a007b23e7779a4b74e8a2b57f49f6"
+    },
+    "garden/templates/garden/select_garden.html": {
+      "before": "2c9b1c997d2ea637af35c6262f66f6b438d7cd0717d2cd74d70181ff6d35d306",
+      "after": "87448d7e1c274343411fa6b9ad41e51222dd19599593514563c65e74056c8b10"
+    },
+    "garden/templates/registration/login.html": {
+      "before": "e3991cfa8812d7dbbb5d031713869a89928d0c2060eb90a3f032f55a77f376ef",
+      "after": "263bcaddf0cbc50db22713b49af592289aff5381d60d44b61e8510ca0415418f"
+    },
+    "garden/test_pwa.py": {
+      "before": "c0efa19f2adc574f58336d2fabdd9bb8cc1fa2ee776b4effe4ae73327fe186e1",
+      "after": "95592403d1ce8ea393c7d808f93dc66ea126be23590fa6feb1063daa3f79b74a"
+    },
+    "tests/pwa-http-driver.cjs": {
+      "before": "f717902113f63b700e46b1d69f71f111f014b6c5a4a47c014a11980c48362a34",
+      "after": "7dda85008723dd72cfd541a2c4d6982435cf7d98e9033e761d33c1eee662e986"
+    },
+    "tests/pwa-offline.test.cjs": {
+      "before": "65cd504f09466106e1cae2fe86e34d6bd0d73d17d26040c7229de32b896a4df8",
+      "after": "6671c335652330811dca70425e9a3b5754118fc04abd8345a8796f5ddab892a8"
+    }
+  },
+  "added_review_artifacts": [
+    "docs/m2-review/fixes.md",
+    "docs/m2-review/fixes.patch",
+    "docs/m2-review/fixes-changes.json",
+    "docs/m2-review/fixes-before-manifest.json",
+    "docs/m2-review/fixes-javascript.txt",
+    "docs/m2-review/fixes-django.txt",
+    "docs/m2-review/fixes-checks.txt"
+  ],
+  "manifest_note": "final-manifest.json regenerated; excludes itself"
+}

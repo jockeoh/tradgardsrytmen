@@ -1,0 +1,44 @@
+Creating test database for alias 'default'...
+Destroying old test database for alias 'default'...
+Method Not Allowed (OPTIONS): /api/v1/auth/login/
+.Forbidden: /api/v1/auth/login/
+Forbidden: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Unauthorized: /api/v1/auth/login/
+Too Many Requests: /api/v1/auth/login/
+.Not Found: /api/v1/auth/login/
+Forbidden (CSRF cookie not set.): /api/v1/gardens/
+Forbidden: /api/v1/gardens/
+.Unauthorized: /api/v1/me/
+.Unauthorized: /api/v1/me/
+Unauthorized: /api/v1/me/
+Unauthorized: /api/v1/me/
+Unauthorized: /api/v1/me/
+.Unauthorized: /api/v1/me/
+Unauthorized: /api/v1/me/
+./tmp/m2-pwa-py313/lib/python3.12/site-packages/django/core/handlers/base.py:61: UserWarning: No directory at: /Users/joakimohman/Code/tradgardsrytmen-m2-pwa/staticfiles/
+  mw_instance = middleware(adapted_handler)
+.................................................................................................................../Users/joakimohman/Code/tradgardsrytmen-m2-pwa/garden/test_database_backup.py:28: UserWarning: Overriding setting DATABASES can lead to unexpected behavior.
+  with override_settings(DATA_DIR=Path(directory), DATABASES={'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': source}}):
+./Users/joakimohman/Code/tradgardsrytmen-m2-pwa/garden/test_database_backup.py:37: UserWarning: Overriding setting DATABASES can lead to unexpected behavior.
+  with override_settings(DATA_DIR=Path(directory), DATABASES={'default': config}), patch('garden.database_backup.subprocess.run', side_effect=OSError('failed')) as command, patch('garden.database_backup.sqlite3.connect') as sqlite:
+./Users/joakimohman/Code/tradgardsrytmen-m2-pwa/garden/test_database_backup.py:18: UserWarning: Overriding setting DATABASES can lead to unexpected behavior.
+  with override_settings(DATA_DIR=Path(directory), DATABASES={'default': {'ENGINE': 'django.db.backends.sqlite3', 'NAME': source}}):
+.............................................................................................................................................................
+----------------------------------------------------------------------
+Ran 280 tests in 13.166s
+
+OK
+Destroying test database for alias 'default'...
+Found 280 test(s).
+System check identified no issues (0 silenced).
+Trädgården är grundfylld.
+Trädgården är grundfylld.
