@@ -1,5 +1,12 @@
 # M2-PWA – lokal granskningsleverans 2026-09-29
 
+**Uppföljande rättning 2026-09-29:** granskningen av `1883cec` fann två
+ytterligare gränsfall: versionsbyte vid sessionStorage-fel och ofullständig
+tidsspärr i flerpostskö. De är nu rättade med regressionstester; se
+[nya rättningsunderlaget](m2-review/followup-fixes.md). Aktuell kod använder
+SW `tradgardsrytmen-v17-m2` / assets `m2-7`. Tidigare versioner, manifest
+och testantal nedan beskriver den föregående leveransen. Ingen serverrelease.
+
 **Senare beslut 2026-09-29:** användaren har beställt commit/push av paketet
 och en ny uppgift för granskning av rättningarna. Tidigare formuleringar om
 ingen commit/push beskriver implementations- och rättningsstegen. Serverrelease

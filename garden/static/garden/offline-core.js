@@ -114,21 +114,23 @@
       },
       sync: expected => lock(async () => {
         const d=read(),s=active(d,expected);
+        // One observed clock applies to the whole queue, even when the first
+        // receipt fails and aborts the batch before later rows are visited.
+        const observeQueue=()=>{
+          const time=now();
+          for(const row of s.queue) {
+            if(!row.readOnlyReason) {
+              if(time<Math.max(row.created,row.lastObserved||row.created)) row.readOnlyReason='clock_rollback';
+              else if(time-row.created>=WEEK) row.readOnlyReason='age_limit';
+            }
+            row.lastObserved=Math.max(time,row.lastObserved||row.created);
+            if(row.readOnlyReason && !['conflict','rejected'].includes(row.state)) row.state='uncertain';
+          }
+          write(d);
+        };
         for(const q of [...s.queue]) {
           if(storage.getItem(STOP)) return;
-          // Persist a one-way transport fence BEFORE receipt I/O, including
-          // failures and restarts. Track observed time to detect smaller rollbacks.
-          const readOnly=()=>{
-            const time=now();
-            if(!q.readOnlyReason) {
-              if(time<Math.max(q.created,q.lastObserved||q.created)) q.readOnlyReason='clock_rollback';
-              else if(time-q.created>=WEEK) q.readOnlyReason='age_limit';
-            }
-            q.lastObserved=Math.max(time,q.lastObserved||q.created);
-            if(q.readOnlyReason && !['conflict','rejected'].includes(q.state)) q.state='uncertain';
-            write(d);
-            return !!q.readOnlyReason;
-          };
+          const readOnly=()=>{observeQueue();return !!q.readOnlyReason;};
           const fenced=readOnly();
           if(q.state==='conflict' || q.state==='rejected' || now()<(q.retryAt||0)) continue;
           try {
@@ -146,6 +148,7 @@
               q.sent=true;q.state='sending';write(d);
               result=await http(`/api/pwa/tasks/${q.task.id}/complete/`,s.context,q.body,q.key);
             }
+            observeQueue();
             if(result.id!==q.task.id || result.garden_id!==s.context.garden || result.status!=='completed') throw Error('Svaret kunde inte bekräftas.');
             q.state='confirmed';q.result=result;s.archive.push(q);s.queue=s.queue.filter(x=>x.key!==q.key);
             if(s.snapshot) s.snapshot.tasks=s.snapshot.tasks.map(t=>t.id===result.id?{...t,...result}:t);

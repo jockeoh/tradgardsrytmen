@@ -230,3 +230,43 @@ test('legacy pending logout with frozen CSRF recovers without changing journal s
  assert.equal(h.calls.at(-1).opts.headers['X-CSRFToken'],'new');assert.equal(h.raw.scopes[id].context.membership,1);
  assert.equal(h.raw.scopes[id].queue[0].key,old.scopes[id].queue[0].key);assert.equal((await e.view()).logout,false);
 });
+
+test('failed session draft storage cannot rebase the visible form or enqueue a mutation',async()=>{
+ const h=harness(),[e,id]=await ready(h),tab=ui(h,e);await tab.done();
+ const original=tab.elements.tasks.innerHTML,save=tab.sessionStorage.setItem;
+ h.task={version:2,note:'New server note'};await h.client().refresh(id);
+ tab.sessionStorage.setItem=()=>{throw Error('session quota');};
+ await assert.rejects(tab.render(),/session quota/);
+ assert.equal(tab.elements.tasks.innerHTML,original);
+ await tab.submit('Bevara');assert.equal(h.raw.scopes[id].queue.length,0);
+ tab.sessionStorage.setItem=save;
+ await tab.submit('Bevara');
+ assert.deepEqual(JSON.parse(h.raw.scopes[id].queue[0].body),{expected_version:1});
+ await tab.elements.refresh.onclick();
+ assert.equal(h.raw.scopes[id].queue[0].state,'conflict');assert.equal(h.receipts.size,0);
+});
+
+for(const timing of ['before receipt','during failed receipt','rollback above creation'])
+test(`whole queue keeps clock fence after first receipt failure: ${timing}`,async()=>{
+ const h=harness(),[e,id]=await ready(h),f=await form(e);
+ await e.enqueue(id,f);await e.enqueue(id,{task:{...f.task,id:'second'}});
+ const frozen=h.raw.scopes[id].queue.map(q=>({key:q.key,body:q.body}));
+ if(timing==='during failed receipt') {
+  h.offline=true;await assert.rejects(e.sync(id));h.offline=false;
+  h.beforeReceipt=()=>{h.time=WEEK+1000;throw Error('receipt unavailable');};
+ }else if(timing==='rollback above creation') {
+  h.time=3000;h.offline=true;
+ }else {h.time=WEEK+1000;h.beforeReceipt=()=>{throw Error('receipt unavailable');};}
+ await assert.rejects(e.sync(id));
+ h.time=timing==='rollback above creation'?2000:WEEK;h.offline=false;h.beforeReceipt=null;
+ const attempts=h.calls.filter(c=>c.path.endsWith('/complete/')).length;
+ const syncError=await h.client().sync(id).catch(error=>error);
+ assert.equal(h.calls.filter(c=>c.path.endsWith('/complete/')).length,attempts);
+ assert.equal(syncError,undefined);
+ assert.deepEqual(h.raw.scopes[id].queue.map(q=>({key:q.key,body:q.body})),frozen);
+ assert.ok(h.raw.scopes[id].queue.every(q=>q.readOnlyReason));
+ h.receipts.set(frozen[1].key,{id:'second',garden_id:'g',status:'completed',version:2,note:'Bevara'});
+ await h.client().sync(id);
+ assert.equal(h.raw.scopes[id].archive[0].key,frozen[1].key);
+ assert.equal(h.calls.filter(c=>c.path.endsWith('/complete/')).length,attempts);
+});

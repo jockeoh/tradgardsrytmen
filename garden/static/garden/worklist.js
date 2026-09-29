@@ -14,14 +14,18 @@ function clearForms(){
  try{sessionStorage.removeItem(FORM_KEY);}catch(_){}
 }
 function loadForms(s){
- if(!forms) forms=JSON.parse(sessionStorage.getItem(FORM_KEY)||'null');
- if(!forms || forms.scope!==tabScope || forms.boundary!==s.context.boundary) forms={scope:tabScope,boundary:s.context.boundary,tasks:{}};
- for(const q of s.queue) delete forms.tasks[q.task.id];
+ const saved=forms || JSON.parse(sessionStorage.getItem(FORM_KEY)||'null');
+ const next=saved && saved.scope===tabScope && saved.boundary===s.context.boundary
+  ? JSON.parse(JSON.stringify(saved)) : {scope:tabScope,boundary:s.context.boundary,tasks:{}};
+ for(const q of s.queue) delete next.tasks[q.task.id];
  for(const t of s.snapshot?.tasks||[]) {
-  if(t.status!=='pending') delete forms.tasks[t.id];
-  else if((!forms.tasks[t.id]||!Object.hasOwn(forms.tasks[t.id],'note'))&&!s.queue.some(q=>q.task.id===t.id)) forms.tasks[t.id]={task:t};
+  if(t.status!=='pending') delete next.tasks[t.id];
+  else if((!next.tasks[t.id]||!Object.hasOwn(next.tasks[t.id],'note'))&&!s.queue.some(q=>q.task.id===t.id)) next.tasks[t.id]={task:t};
  }
- saveForms();
+ // Commit the new form model only after persistence succeeds. On failure,
+ // the still-visible DOM and its version must remain paired.
+ sessionStorage.setItem(FORM_KEY,JSON.stringify(next));
+ forms=next;
 }
 const title=t=>`<h3>${escape(t.title)}</h3><small>${escape(t.plant_name)} · ${escape(t.due_date)}</small>`;
 async function render(){
@@ -57,7 +61,7 @@ document.addEventListener('submit',e=>{
  const id=e.target.dataset.task,scope=tabScope,form=JSON.parse(JSON.stringify(forms.tasks[id]));
  const note=e.target.querySelector('textarea').value;
  if(Object.hasOwn(form,'note')||note!==String(form.task.note??''))form.note=note;
- run(async()=>{await engine.enqueue(scope,form);delete forms.tasks[id];saveForms();await render();if(navigator.onLine)await sync();});
+ run(async()=>{saveForms();await engine.enqueue(scope,form);delete forms.tasks[id];saveForms();await render();if(navigator.onLine)await sync();});
 });
 document.addEventListener('click',e=>{const b=e.target.closest('[data-retry],[data-keep]');if(b)run(async()=>{await engine.resolve(tabScope,b.dataset.retry||b.dataset.keep,!!b.dataset.retry);await sync();});});
 window.addEventListener('storage',e=>{if(e.key===GardenOffline.KEY||e.key==='garden.m2.stop')engine.view().then(v=>{if(v.active!==tabScope)render();else if(!busy && document.activeElement?.tagName!=='TEXTAREA')render();});});

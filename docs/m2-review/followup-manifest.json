@@ -1,0 +1,12 @@
+{
+  "docs/m2-pwa.md": "c9b949875df9bcd4eb9ae352a44e70a0d8c4e8836ade00b2d6545bb743e3631d",
+  "docs/m2-review/followup-fixes.md": "9856492134d01378e2bfc56b6d0c1aa44ebd903e752a9c29ab0d4a679a6b539b",
+  "garden/static/garden/offline-core.js": "9dafb77c728b316e95c795bd6e386e143313b0299a3af4a531ccdfe0ba9c8e9f",
+  "garden/static/garden/sw.js": "24913959ce4d6d23df7373560f76ea8c33e7a80bd6432175b3b9e27021db9d8c",
+  "garden/static/garden/worklist.html": "3c86b84388a0cb02f9db3bb428856e3fe063b5aa4f7322e252bd455ab9ded93d",
+  "garden/static/garden/worklist.js": "abebee94c3f89bd78adf3da75cea3975dc260c5ce61040951ead00adadc01d4c",
+  "garden/templates/garden/index.html": "1b172dbc578582f5bc896c05813e5b3929d97781e36fc3a3a8d9832992ebb425",
+  "garden/templates/garden/select_garden.html": "2f4997f861de8116c10744e53bf9493a219cb9aec1ecf022c15ae7795d96dd8b",
+  "garden/templates/registration/login.html": "2018034edd30471ecb11cc0c2bea16d3c68c0556fafcccd15637fbabb1fa0660",
+  "tests/pwa-offline.test.cjs": "060c77c15cef7b7c332d3bc2066836cf2779d43bd880dfefc73420c0fea526ac"
+}
