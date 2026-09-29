@@ -15,7 +15,7 @@ tjänsteaktiveringar är separata slutsteg, inte skäl att utelämna funktioner.
 ## Aktuell lokal implementation, 2026-09-29
 
 Arbetet finns på `task/full-app-rewrite` i `tradgardsrytmen-full-app`.
-Paketet och reviewrättningarna är avsedda för publicering på denna arbetsgren.
+Paketet och reviewrättningarna publiceras på `main` enligt användarens beslut.
 Ingen installation eller produktionsaktivering ingår i publiceringen.
 
 Den anslutna Expo-klienten har nu ett samlat gränssnitt för:
@@ -40,8 +40,10 @@ skötsellivscykel, API, jobb, transporter och konto.
 De 13 workspace-testerna passerade efter reviewrättningarna.
 En tidigare full körning genomförde 291 tester men kunde inte starta det
 återstående HTTP-testets loopbackserver på grund av sandboxens portspärr.
-Ingen fysisk enhet, simulator, visuell browsergranskning eller PostgreSQL-
-körning av denna nya gren är verifierad. Monterade komponenttester använder
+GitHub Checks för `0f344e4` passerade därefter på Linux, macOS och PostgreSQL,
+inklusive HTTP-integration och mobilexport:
+https://github.com/jockeoh/tradgardsrytmen/actions/runs/36545246154
+Ingen fysisk enhet, simulator eller visuell browsergranskning är verifierad. Monterade komponenttester använder
 mockade native-primitiver; de är inte telefonbevis.
 
 ## Rättningar efter oberoende review, 2026-09-29
@@ -63,8 +65,8 @@ installationsprov med nedanstående kvarvarande verifierings- och produktluckor.
 
 1. Kör hela vardagsflödet mot isolerad riktig server i Expo på måltelefonen,
    inklusive omstart under sparning och granskning av en full skötselplan.
-   Kontrollera layout/tillgänglighet på liten skärm. Kör återstående HTTP-
-   och PostgreSQL-kontroller i en miljö som tillåter dem.
+   Kontrollera layout/tillgänglighet på liten skärm. Automatiserade HTTP-
+   och PostgreSQL-kontroller har passerat i CI; de ersätter inte telefonprovet.
 2. Konfigurera den privata installationens verkliga app-/EAS-identitet och
    notisbehörigheter. Prova analys och påminnelser först när extern körning
    är beställd. Expo-ticket är inte leveransbevis; telefonleverans och

@@ -4,7 +4,7 @@ Lokal fullappsimplementation på grenen `task/full-app-rewrite`.
 Expo SDK 57 / React Native 0.86.3 / React 19.2.3 / Expo Router.
 Se [fullappsstatus och kvarvarande prov](../docs/full-app-rewrite.md) och
 [workspace-kontraktet](../docs/workspace-api.md).
-Paketet publiceras på arbetsgrenen; installation och produktionsaktivering är separata steg.
+Paketet publiceras på main; installation och produktionsaktivering är separata steg.
 
 ## Isolerat prov med riktig server
 

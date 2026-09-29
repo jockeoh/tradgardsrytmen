@@ -17,17 +17,18 @@ En samlad lokal Expo-implementation finns nu på `task/full-app-rewrite`:
 hela funktionsinventeringen har fått nya vyer/API-flöden, inklusive
 skötselplansgranskning, inköpsverktyg och avstängt native-notisstöd.
 **Nästa huvudsteg är sammanhängande server-/telefonprov och övergång**, med
-kvarvarande verifierings- och installationspunkter i länken ovan. Publicering på arbetsgrenen är
+kvarvarande verifierings- och installationspunkter i länken ovan. Publicering på main är
 separat från en verifierad installation och produktionsrelease.
 
 Reviewrättningarna är genomförda 2026-09-29: endast godkända och aktiva råd
 visas som aktuell skötsel, tidsplan/behovsvillkor syns vid godkännande och
 statuskonflikter visar uppgiftens senaste innehåll före nytt sparförsök.
 67 mobiltester, typkontroll/lint, export för iOS/Android/webb och 213 riktade
-serverregressioner (inklusive 13 workspace-tester) passerar efter rättningarna. Paketet publiceras på `task/full-app-rewrite`; ingen merge till
-main eller produktionsaktivering ingår. Nästa steg är samlat installationsprov,
+serverregressioner (inklusive 13 workspace-tester) passerar efter rättningarna. Paketet publiceras på `main` efter användarens förtydligande.
+Produktionsaktivering och telefoninstallation är separata steg. Nästa steg är samlat installationsprov,
 inklusive full plansgranskning, konflikter och omstart under sparning.
-Telefon/visuell granskning och PostgreSQL på grenen återstår; läsbar offline-
+GitHub Checks för `0f344e4` passerade på Linux, macOS och PostgreSQL,
+inklusive HTTP-integration och mobilexport. Telefon/visuell granskning återstår; läsbar offline-
 arbetslista och överföring av gamla inköpslistan är fortsatt öppna produktluckor.
 
 Arbetsordning: bygg den funktionellt kompletta ersättaren → prova hela
