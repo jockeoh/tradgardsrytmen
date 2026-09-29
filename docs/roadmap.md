@@ -2,10 +2,12 @@
 
 ## Aktuell inriktning 2026-09-29
 
-**M2-PWA är implementerat och de tre verifierade granskningsfynden är
-rättade lokalt. Nästa steg är att granska rättningarna och komplettera
-verifieringen inför ett separat publiceringsbeslut.** Publicering av källkoden är beställd 2026-09-29. Paketet finns i `tradgardsrytmen-m2-pwa`, gren `task/m2-pwa-offline`, bas
-`59d4c4c0bcae86778a8b6c54e21371d011679cd9`. Ingen M2-serverrelease eller produktionsaktivering är gjord i denna uppgift.
+**M2-PWA:s tre ursprungliga rättningar har granskats. Två ytterligare
+fynd om lagringsfel och flerpostskö har rättats och publicerats till main i
+`93e5aface3cee2d8ae9317f3647d93c346f5f3dd`. Nästa steg är kompletterande
+isolerade integrationsprov enligt steg 2 nedan.** Källkoden finns i
+`tradgardsrytmen-m2-pwa`, gren `task/m2-pwa-offline`. Ingen M2-serverrelease
+eller produktionsaktivering har utförts i detta arbete.
 
 Privat PWA prioriteras. iPhone-/Expo-installation och I1:s native-prov är
 fortsatt pausade och blockerar inte det lokala M2-arbetet. Se
@@ -32,42 +34,59 @@ en beständig kö och synkas när appen är öppen. Bekräftad historik skiljs f
 väntande handlingar; samma key/body återanvänds efter tappat svar. Konto,
 trädgård, exakt medlemskap, offlineutloggning och explicita konfliktval ingår.
 
-Efter granskningen rättades tre fynd: formulärets visade version och egen
-anteckning binds före köläggning, väntande logout återhämtar aktuell CSRF,
-och sjudagars-/klockspärren består efter omstart och klockjustering.
-SW är `tradgardsrytmen-v16-m2`, assets `m2-6`.
+De tre ursprungliga rättningarna finns i `1883cec`: formulärets visade
+version/anteckning, återhämtning av aktuell CSRF vid logout och beständig
+tidsspärr. Granskningen fann två ytterligare gränsfall som rättats i `93e5afa`:
 
-Verifierat efter rättning: **56/56 JavaScript, 281 Django-tester och 4/4
-fristående Python-prov**, plus Django check, migrationskontroll, syntax och
-diffkontroll. Hela Django-körningen är inte grön: ett ytterligare HTTP-prov
-kunde inte starta loopbackserver på grund av sandboxens `PermissionError`.
-UI-regressionerna kör levererade skript med DOM-adapter, inte riktig browser.
-Ursprungsleveransens riktiga browserprov gäller m2-5 och är äldre bevis.
+- Ett sessionStorage-fel får inte höja formulärets interna version medan
+  det gamla formuläret ligger kvar. Formulärunderlaget byts först efter
+  lyckad lagring; lagringsfel stoppar ny köläggning.
+- Tidsobservationer spärrar hela den aktiva kön före transport och vid
+  svar/fel. Första postens kvittofel kan inte lämna senare gamla poster
+  öppna för mutation efter klockbackning och omstart.
+
+Aktuell SW är `tradgardsrytmen-v17-m2`, assets `m2-7`. Se
+[rättningsunderlaget](m2-review/followup-fixes.md).
+
+Ny lokal verifiering: **60/60 JavaScript, 11/11 Django-PWA-tester och 4/4
+fristående Python-prov**, samt syntax/diffkontroll. Fyra nya regressionstestfall
+fallerar mot `1883cec` och passerar med rättningarna. Django använde egen
+filbaserad SQLite; UI-testerna använder DOM-adapter, inte riktig browser.
+Ingen ny full lokal Django-/HTTP-/PostgreSQL-körning gjordes i rättningssteget.
+
+[CI för exakt rättningsrevision `93e5afa`](https://github.com/jockeoh/tradgardsrytmen/actions/runs/36536747105)
+är **completed/success**: Linux/Python 3.12, macOS/Python 3.13, PostgreSQL
+samt mobile är gröna. Detta omfattar full Django-svit och de automatiska
+HTTP-/processåterstartsproven, men inga riktiga browser-/telefonprov.
+Det tidigare lokala HTTP-provet blockerades av sandboxens loopback-behörighet.
+Ursprungliga browserbevis gäller m2-5.
 
 ## Plan framåt, i ordning
 
-1. **Granska rättningarna.** Utgå från rättningsunderlaget, patchen och
-   slutmanifestet. Kontrollera särskilt två flikars skilda utkast/versioner,
-   logout efter CSRF-rotation och bestående lässpärr efter klockjustering.
-2. **Komplettera isolerade integrationsprov där miljön tillåter.** Kör om
-   HTTP-/processdödsprovet med syntetisk filbaserad SQLite. Prova m2-6 i två
-   riktiga browserflikar: de rapporterade konfliktförloppen, tom/orörd
-   anteckning, offlineutloggning, ny login och byte från äldre service worker.
-   Prova även sessionsadaptern och regressionssviten mot isolerad PostgreSQL
-   inför release till den befintliga PostgreSQL-driften. Behåll miljöhinder
-   och ej genomförda prov synliga; kringgå inga spärrar.
-3. **Förbered integration och separat beslut om commit/push och release.**
-   Jämför med då aktuell main och bevara den separata dokumentpubliceringen.
-   För inte över äldre ärvda dokument ovanpå nyare planer. Vid en beställd
-   release verifieras CI, terminal deployment, driftsatt revision, hälsa
-   och SW-/assetversioner. Lokala testresultat är inte driftbevis.
+1. **Genomförd granskning och uppföljande rättning.** De två ytterligare
+   fynden är rättade med negativa regressionstester och publicerade i
+   `93e5afa`. Bevara äldre patchar/manifest som historiskt bevis; det nya
+   rättningssteget har ett separat manifest.
+2. **Nästa steg: komplettera isolerade integrationsprov.** Prova m2-7 i två
+   riktiga browserflikar: skilda utkast/versioner, sessionStorage-fel,
+   orörd/tömd anteckning, offlineutloggning, ny login och byte från äldre
+   service worker. Följ exakt revisions CI för HTTP/processåterstart och
+   PostgreSQL, och komplettera där automatproven inte täcker verklig browser.
+   En full browserprocessdöd är fortfarande ett separat prov. Lokala prov
+   ska använda syntetisk filbaserad SQLite eller isolerad PostgreSQL;
+   behåll miljöhinder synliga och kringgå inga spärrar.
+3. **Separat beslut om serverrelease.** Commit/push är genomfört för
+   rättningarna; detta är inte en serverrelease. Jämför med då aktuell main
+   och bevara dokumentpubliceringen. Vid beställd release verifieras CI,
+   terminal deployment, driftsatt revision, hälsa och SW-/assetversioner.
+   Lokala testresultat och publicerad källkod är inte driftbevis.
 4. **Följ upp privat PWA efter godkänd release.** Verifiera vardagsflödet på
    en faktisk telefon/installerad PWA när användaren vill återuppta sådana
    prov. Ta därefter ställning till nästa avgränsade förbättring, exempelvis
    export/manuell avstämning av gamla osäkra avsikter. Automatisk gallring
    eller nya nycklar för oklara utfall ingår inte som standard.
 
-Commit/push av källkoden är beställd. Serverrelease och nya funktioner
+Commit/push av rättningarna är genomfört. Serverrelease och nya funktioner
 kräver fortfarande separata beslut.
 Native I1/Expo förblir pausat. Bred offline-redigering, nya växter offline,
 offline-AI, native push, L1/betalningar, Auth0 och publik lansering är senare
@@ -87,7 +106,7 @@ Tabellen skiljer genomförd serverleverans från pausade native-prov.
 | Senare: L1 | Produktförslag finns; ingen färdig separat L1-leverans eller fastställd betal-/offlineomfattning verifierad. | Besluta målgrupp/marknad, betalande part, priser, AI-kvoter, delning, offlineomfattning och webbens framtid. Ger avgränsning för M2/B1/R1; leverantörsavtal och köp är separata externa beslut. |
 | Pausat: I1 telefonverifiering | Privat serverintegration och mobilinloggning driftsatta; fysisk iOS/Android inte verifierad. | iPhone-/Expo-installation pausad 2026-09-29 på användarens begäran. Återuppta enhetsprov senare; Auth0 är inte förkrav för privat hemmaapp. |
 | Senare: Native AI | P3 ger bara privat webbkö, inga native v1 AI-endpoints. | Specificera/implementera v1 start/status/granskning/godkännande, uttryckligt datamedgivande och utfall/återförsök; koppla till driftklar P3 efter I1. Krävs om AI ingår i mobil v1; inga riktiga prov utan godkännande. |
-| Nu: M2-PWA, rättat lokalt | Offlinearbetslista och beständig kö implementerade; tre granskningsfynd rättade. 56 JS, 281 Django och 4 Python passerade. Källkodspublicering beställd; ingen M2-serverrelease. | Granska rättningarna, återkör miljöblockerat HTTP-prov och komplettera riktiga browser-/PostgreSQL-prov inför separat integrations- och releasebeslut. Native/Expo fortsatt pausat. |
+| Nu: M2-PWA, rättningar publicerade | Ursprungliga tre fynd granskade; två ytterligare gränsfall rättade i 93e5afa. 60 JS, 11 riktade Django och 4 Python passerade lokalt. SW v17-m2/assets m2-7. Ingen M2-serverrelease. | Steg 2: riktiga browserprov, lagringsfel, äldre SW och full browserprocessdöd; följ nya revisionens CI för HTTP/PostgreSQL. Native/Expo fortsatt pausat. |
 | 7. B1 | Köp/tillgång inte verifierade som implementerade. | Efter I1 + L1: välj köptransport, serververifierad tillgång, köp/återställning/förnyelse/uppsägning/återbetalning och deduplicerade händelser. Butikskonton, avtal, betalningar och publicering kräver separata beslut. Villkorligt: bara nödvändigt för betald lansering. |
 | 8. R1 och publik drift | Inte lanseringsklar; lokala testresultat är inte produktionsbevis. | Verifiera kontoåterställning, support, integritetsinformation, export/radering, tillgänglighet och äldre klienter. Inför publik AI-budget/frekvensgränser/kostnadslarm. Verifiera backup/återläsning, driftlarm, belastning, butiksunderlag och båda plattformarna för beslutad v1. Extern pilot och butikslansering godkänns separat. |
 
