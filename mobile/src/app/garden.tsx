@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Text, View } from "react-native";
 import { Redirect, router } from "expo-router";
 import { Garden, Plant, Task, gardenPath } from "../api/contract";
-import { useSession } from "../core/runtime";
+import { demo, useSession } from "../core/runtime";
 import {
   Button,
   ErrorPanel,
@@ -14,6 +14,7 @@ import {
 } from "../ui/common";
 export default function GardenRoute() {
   const session = useSession();
+  if (session.garden && !demo) return <Redirect href="/workspace" />;
   return session.garden ? (
     <GardenScreen key={session.epoch} />
   ) : (

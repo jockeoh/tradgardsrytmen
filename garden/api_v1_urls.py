@@ -1,10 +1,11 @@
 from django.urls import path
 
-from . import api_v1
+from . import api_v1, mobile_workspace
 from accounts import mobile
 
 
 urlpatterns = [
+    path("gardens/<uuid:garden_id>/workspace/", mobile_workspace.workspace),
     path("auth/login/", mobile.login),
     path("auth/logout/", mobile.logout),
     path("reconcile/", api_v1.reconcile),

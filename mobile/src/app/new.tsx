@@ -2,7 +2,7 @@ import { useState } from "react";
 import { Text } from "react-native";
 import { Redirect, router, useLocalSearchParams } from "expo-router";
 import { Garden, Plant, Task, gardenPath } from "../api/contract";
-import { useSession } from "../core/runtime";
+import { demo, useSession } from "../core/runtime";
 import {
   Button,
   ErrorPanel,
@@ -87,7 +87,7 @@ function Form({ kind, plant }: { kind: string; plant?: string }) {
       if (!session.current(scope) || !focused.current) return;
       if (kind === "garden") {
         session.selectGarden(saved.id);
-        router.replace("/garden");
+        router.replace(demo ? "/garden" : "/workspace");
       } else
         router.replace({
           pathname: kind === "plant" ? "/plant" : "/task",
@@ -111,7 +111,7 @@ function Form({ kind, plant }: { kind: string; plant?: string }) {
           onPress={() => {
             if (kind === "garden") {
               session.selectGarden(saved.id);
-              router.replace("/garden");
+              router.replace(demo ? "/garden" : "/workspace");
             } else
               router.replace({
                 pathname: kind === "plant" ? "/plant" : "/task",

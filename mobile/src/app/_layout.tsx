@@ -12,6 +12,7 @@ export default function Layout() {
           <Stack.Screen name="new" />
         </Stack.Protected>
         <Stack.Protected guard={!!session.account && !!session.garden}>
+          <Stack.Screen name="workspace" />
           <Stack.Screen name="garden" />
           <Stack.Screen name="plant" />
           <Stack.Screen name="task" />

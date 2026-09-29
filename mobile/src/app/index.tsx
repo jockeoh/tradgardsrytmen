@@ -181,7 +181,7 @@ export default function Home() {
                   title={`Öppna ${garden.name}`}
                   onPress={() => {
                     session.selectGarden(garden.id);
-                    router.push("/garden");
+                    router.push(demo ? "/garden" : "/workspace");
                   }}
                 />
               </View>

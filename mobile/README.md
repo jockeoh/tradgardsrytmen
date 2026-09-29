@@ -1,9 +1,10 @@
 # Trädgårdsrytmen — ansluten hemmaapp
 
-Lokal granskningsimplementation på grenen `task/connected-home-app`.
+Lokal fullappsimplementation på grenen `task/full-app-rewrite`.
 Expo SDK 57 / React Native 0.86.3 / React 19.2.3 / Expo Router.
-Se [leverans, kontrakt och provgränser](../docs/home-app-delivery.md).
-Ingen commit/push eller produktionsaktivering ingår.
+Se [fullappsstatus och kvarvarande prov](../docs/full-app-rewrite.md) och
+[workspace-kontraktet](../docs/workspace-api.md).
+Paketet publiceras på arbetsgrenen; installation och produktionsaktivering är separata steg.
 
 ## Isolerat prov med riktig server
 
@@ -95,8 +96,8 @@ skapas blint. Saknat kvitto efter gränsen låser avsikten och kräver operatör
 kontroll enligt [avstämningsvägen](../docs/home-app-delivery.md).
 
 Formulär bevarar navigation, orörd/tömd anteckning och konflikter. Konto-/
-trädgårdsbyten spärrar sena svar. V1 erbjuder fortfarande inte redigering,
-återöppning, AI eller push. Historiska M1-prov finns i
+trädgårdsbyten spärrar sena svar. Den nya workspace-vyn omfattar även
+redigering, återöppning, skötselplansgranskning och köad analys. Historiska M1-prov finns i
 [m1-handoff](../docs/m1-handoff.md) och [rättningsrapporten](../docs/m1-fix-review/README.md).
 
 
@@ -112,3 +113,23 @@ säkra lagringspost på native. En otillgänglig gammal server blockerar inte
 ny login. Kön återförsöks vid appstart/återanslutning och utloggning; 401 på
 aktivt konto raderar inte andra servrars väntande återkallningar. Webbpreview
 har fortsatt enbart token/återkallningskö i flikens minne.
+
+
+## Fullappsgränssnitt och native-notiser
+
+Efter val/skapa trädgård öppnas `/workspace`: Överblick, Min trädgård,
+Årshjulet, Inköp och Inställningar. Det syntetiska M1-läget behåller sitt
+historiska kärnflöde; använd isolerad Django-server för den nya helheten.
+
+Servern behöver migrationerna 0015/0016. Native push är avstängt som standard.
+För verklig aktivering krävs en privat development/installation build med
+`expo-notifications`, rätt iOS/Android-identitet och notiscredentials, samt
+projektets verkliga EAS project ID i `extra.eas.projectId`. Inget sådant ID
+eller externa credentials har hittats på eller lagts in i detta arbete.
+På servern krävs `TRADGARDSRYTMEN_NATIVE_PUSH=1` och privat mobilinloggning.
+Registreringen sker först när användaren väljer att aktivera påminnelser.
+
+En Expo-export bevisar inte installation eller mottagen notis. Kör inga EAS-
+byggen, verklig AI eller notisleveranser som del av automatiska testkommandon.
+Inköpslistan är lokal per server/konto/trädgård. Gamla webbens lista finns kvar
+på sin ursprungliga enhet; ingen tyst import eller kontoflytt görs.

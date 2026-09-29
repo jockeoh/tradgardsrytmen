@@ -40,15 +40,29 @@ def recipient_is_authorized(subscription, *, membership_pk=None, kind=None):
     """Revalidate the selected recipient and transport address, never retarget it."""
     if not subscription.garden_id or not subscription.user_id:
         return False
+    if subscription.provider == "expo":
+        from accounts.models import MobileSession
+        from accounts.mobile import password_stamp
+        saved = MobileSession.objects.select_related("user").filter(pk=subscription.native_session_id,
+            user_id=subscription.user_id, expires_at__gt=timezone.now()).first()
+        if saved is None or saved.password_stamp != password_stamp(saved.user):
+            return False
+    if subscription.provider == "expo" and (subscription.native_membership_pk is None or
+            (membership_pk is not None and subscription.native_membership_pk != membership_pk)):
+        return False
     members = GardenMembership.objects.filter(garden_id=subscription.garden_id,
         user_id=subscription.user_id, user__is_active=True)
     membership_pk = membership_pk if membership_pk is not None else getattr(subscription, "recipient_membership_pk", None)
+    if subscription.provider == "expo":
+        members = members.filter(pk=subscription.native_membership_pk)
     if membership_pk is not None:
         members = members.filter(pk=membership_pk)
     current = PushSubscription.objects.filter(pk=subscription.pk, active=True,
         garden_id=subscription.garden_id, user_id=subscription.user_id,
         user__is_active=True, endpoint=subscription.endpoint,
-        p256dh=subscription.p256dh, auth=subscription.auth)
+        p256dh=subscription.p256dh, auth=subscription.auth, provider=subscription.provider,
+        native_token=subscription.native_token, native_membership_pk=subscription.native_membership_pk,
+        native_session_id=subscription.native_session_id)
     if kind is not None:
         if kind not in {"monthly", "task"}:
             return False
@@ -78,12 +92,17 @@ def _send(subscription, payload, *, membership_pk=None, kind=None, delivery=None
         if membership_pk is None:
             membership_pk = GardenMembership.objects.filter(garden_id=subscription.garden_id,
                 user_id=subscription.user_id, user__is_active=True).values_list("pk", flat=True).first()
-        _, private_key = get_vapid_keys()
-        arguments = dict(
-            subscription_info={"endpoint": subscription.endpoint, "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth}},
-            data=json.dumps(payload), vapid_private_key=private_key,
-            vapid_claims={"sub": settings.VAPID_SUBJECT}, ttl=3600, timeout=30,
-        )
+        native_request = None
+        if subscription.provider == "expo":
+            from .native_push import prepare
+            native_request = prepare(subscription, payload)
+        else:
+            _, private_key = get_vapid_keys()
+            arguments = dict(
+                subscription_info={"endpoint": subscription.endpoint, "keys": {"p256dh": subscription.p256dh, "auth": subscription.auth}},
+                data=json.dumps(payload), vapid_private_key=private_key,
+                vapid_claims={"sub": settings.VAPID_SUBJECT}, ttl=3600, timeout=30,
+            )
     except Exception as exc:
         raise PushPreparationFailed("Lokal notisförberedelse misslyckades. Ingen notis skickades.") from exc
     try:
@@ -100,6 +119,9 @@ def _send(subscription, payload, *, membership_pk=None, kind=None, delivery=None
     except Exception as exc:
         raise PushPreparationFailed("Slutkontrollen misslyckades. Ingen notis skickades.") from exc
     try:
+        if native_request is not None:
+            from .native_push import send
+            return send(native_request, subscription)
         webpush(**arguments)
         return True, ""
     except WebPushException as exc:

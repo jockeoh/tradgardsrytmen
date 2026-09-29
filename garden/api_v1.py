@@ -332,6 +332,10 @@ def reconcile(request):
         return api_error("idempotency_conflict", "Begäran stämmer inte med kvittot.", 409)
     payload = record.response_body or {}
     garden_id = payload.get("garden_id") or (payload.get("id") if data["path"] == "/api/v1/gardens/" else None)
-    if not garden_id or not _membership(request.api_user, garden_id):
+    member = _membership(request.api_user, garden_id) if garden_id else None
+    if not member:
         return api_error("not_found", "Resursen finns inte.", 404)
+    if payload.get("protocol") == "workspace-1":
+        if payload.get("membership") != member.pk:
+            return api_error("not_found", "Ursprunglig åtkomst finns inte.", 404)
     return JsonResponse({"state": "confirmed", "result": payload})

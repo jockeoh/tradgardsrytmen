@@ -8,3 +8,6 @@ export const Text = "Text",
   ActivityIndicator = "ActivityIndicator";
 export const Platform = { OS: "web" },
   StyleSheet = { create: (x) => x };
+
+export const Switch = "switch";
+export const Linking = {openURL: async () => {}};

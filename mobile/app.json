@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "Trädgårdsrytmen · M1",
+    "name": "Trädgårdsrytmen",
     "slug": "tradgardsrytmen-m1",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -25,7 +25,8 @@
     "plugins": [
       "expo-router",
       "expo-secure-store",
-      "expo-sqlite"
+      "expo-sqlite",
+      "expo-notifications"
     ],
     "scheme": "tradgardsrytmen-m1"
   }

@@ -52,7 +52,9 @@ export default function Recovery() {
             Begäransnyckel: {intent.request.key}
           </Text>
           <Text selectable style={styles.muted}>
-            {JSON.stringify(intent.request.body)}
+            {form === "workspace"
+              ? (() => {try{return JSON.parse(session.draft(scope,form).editor).title;}catch{return "Din ändring i trädgården";}})()
+              : JSON.stringify(intent.request.body)}
           </Text>
           <Button
             title="Hämta sparat kvitto"

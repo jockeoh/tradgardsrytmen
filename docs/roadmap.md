@@ -1,6 +1,44 @@
 # Trädgårdsrytmen: genomförandeplan
 
-## Aktuell inriktning 2026-09-29
+## Aktuellt mål: hela appen omskriven, 2026-09-29
+
+Användaren har förtydligat att målet är **en fullständig ersättare för den
+befintliga appen**, med dess vardagsfunktioner och bevarade data. Kärnflödet
+och M2-PWA är delresultat. Nästa huvudarbete är att färdigställa den nya
+appens funktioner samlat, inte en fortsatt fristående serie offlineprov.
+
+[Fullständig funktionsinventering och slutleverans](full-app-rewrite.md)
+styr nästa arbete. Den omfattar överblick, årshjul, växter/områden,
+uppgiftshantering/historik, skötselplaner/AI, sökning, inköpslista,
+jordberäkning, profil och påminnelser. Målklienten är bekräftad: **Expo/React Native enligt ursprungsriktningen**.
+Befintlig webb/PWA behålls under övergången; den är inte slutmålet.
+
+En samlad lokal Expo-implementation finns nu på `task/full-app-rewrite`:
+hela funktionsinventeringen har fått nya vyer/API-flöden, inklusive
+skötselplansgranskning, inköpsverktyg och avstängt native-notisstöd.
+**Nästa huvudsteg är sammanhängande server-/telefonprov och övergång**, med
+kvarvarande verifierings- och installationspunkter i länken ovan. Publicering på arbetsgrenen är
+separat från en verifierad installation och produktionsrelease.
+
+Reviewrättningarna är genomförda 2026-09-29: endast godkända och aktiva råd
+visas som aktuell skötsel, tidsplan/behovsvillkor syns vid godkännande och
+statuskonflikter visar uppgiftens senaste innehåll före nytt sparförsök.
+67 mobiltester, typkontroll/lint, export för iOS/Android/webb och 213 riktade
+serverregressioner (inklusive 13 workspace-tester) passerar efter rättningarna. Paketet publiceras på `task/full-app-rewrite`; ingen merge till
+main eller produktionsaktivering ingår. Nästa steg är samlat installationsprov,
+inklusive full plansgranskning, konflikter och omstart under sparning.
+Telefon/visuell granskning och PostgreSQL på grenen återstår; läsbar offline-
+arbetslista och överföring av gamla inköpslistan är fortsatt öppna produktluckor.
+
+Arbetsordning: bygg den funktionellt kompletta ersättaren → prova hela
+vardagsflödet → genomför separat godkänd installation/release. Återanvänd
+befintlig serverlogik. Bevara gamla appen under övergången.
+Betalningar och publik lansering är separata framtida spår.
+
+Nedan bevaras M2-status och äldre delplaner som underlag. Deras angivna
+”nästa steg” avser respektive delspår och ersätter inte helhetsmålet ovan.
+
+## Tidigare M2-inriktning 2026-09-29
 
 **M2-PWA:s tre ursprungliga rättningar har granskats. Två ytterligare
 fynd om lagringsfel och flerpostskö har rättats och publicerats till main i

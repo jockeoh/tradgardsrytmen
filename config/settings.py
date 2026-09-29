@@ -82,3 +82,6 @@ DURABLE_JOBS = os.environ.get("TRADGARDSRYTMEN_DURABLE_JOBS", "0") == "1"
 PRIVATE_MOBILE_AUTH = os.environ.get("TRADGARDSRYTMEN_PRIVATE_MOBILE_AUTH", "0") == "1"
 MOBILE_WEB_ORIGINS = [x.strip() for x in os.environ.get("TRADGARDSRYTMEN_MOBILE_WEB_ORIGINS", "").split(",") if x.strip()]
 MIDDLEWARE.insert(1, "accounts.mobile_cors.MobileCorsMiddleware")
+
+# Explicit release gate; no native transport is enabled by installing the client.
+NATIVE_PUSH_ENABLED = os.environ.get("TRADGARDSRYTMEN_NATIVE_PUSH", "0") == "1"

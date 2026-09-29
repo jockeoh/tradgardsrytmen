@@ -5,6 +5,10 @@ const mocks = new Map([
   ["react-native-safe-area-context", "./support/native.mjs"],
   ["expo-router", "./support/router.mjs"],
   ["expo-crypto", "./support/crypto.mjs"],
+  ["expo-sqlite/kv-store", "./support/storage.mjs"],
+  ["expo-secure-store", "./support/storage.mjs"],
+  ["expo-constants", "./support/notifications.mjs"],
+  ["expo-notifications", "./support/notifications.mjs"],
 ]);
 registerHooks({
   resolve(specifier, context, next) {

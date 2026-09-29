@@ -215,6 +215,10 @@ class TaskOccurrence(models.Model):
 
 
 class PushSubscription(models.Model):
+    provider = models.CharField(max_length=12, default="web", choices=[("web", "Web Push"), ("expo", "Expo Push")])
+    native_token = models.CharField(max_length=240, blank=True)
+    native_session = models.ForeignKey("accounts.MobileSession", on_delete=models.SET_NULL, null=True, blank=True)
+    native_membership_pk = models.BigIntegerField(null=True, blank=True)
     garden = models.ForeignKey("Garden", on_delete=models.PROTECT, null=True, blank=True, related_name="push_subscriptions")
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.PROTECT, null=True, blank=True, related_name="push_subscriptions")
     endpoint = models.URLField(max_length=1000, unique=True)
