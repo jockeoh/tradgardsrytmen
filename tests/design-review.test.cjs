@@ -11,6 +11,18 @@ function runtime(extra = {}) {
   return context;
 }
 
+test('writes use the garden CSRF cookie even when another app replaces its cookie', async () => {
+  const document={cookie:'csrftoken=vanverket; tradgardsrytmen_csrftoken=garden'};
+  const calls=[];
+  const c=runtime({document,fetch:async(url,options)=>{
+    calls.push(options.headers['X-CSRFToken']);return {ok:true,status:200,json:async()=>({})};
+  }});
+  await vm.runInContext('api("/api/items/",{method:"POST"})',c);
+  document.cookie='csrftoken=changed';
+  await vm.runInContext('api("/api/items/",{method:"POST"})',c);
+  assert.deepEqual(calls,['garden','']);
+});
+
 test('empty current list stays neutral after completing a manual task', () => {
   const elements = new Map();
   const get = key => {if(!elements.has(key)) elements.set(key,{classList:{toggle(){}},textContent:'',innerHTML:''}); return elements.get(key);};
@@ -117,7 +129,7 @@ test('uncertain research clearly requires manual reconciliation', () => {
 test('all API reads and writes use immutable page context despite a shared-cookie switch', async () => {
   const calls=[];
   const dataset={accountId:'alice', gardenId:'A', webContext:'signed-A'};
-  const c=runtime({document:{body:{dataset},cookie:'csrftoken=fresh-shared-cookie'},fetch:async(url,options)=>{
+  const c=runtime({document:{body:{dataset},cookie:'tradgardsrytmen_csrftoken=fresh-shared-cookie'},fetch:async(url,options)=>{
     calls.push({url,options});return {ok:false,status:409,json:async()=>({code:'context_changed',error:'Kontexten har ändrats'})};
   }});
   dataset.webContext='signed-B'; // Neither DOM changes nor caller headers may rebind this page.
@@ -144,7 +156,7 @@ for(const status of [401,409]) test(`failed form submission (${status}) retains 
   const nodes={'#dynamic-form':form,'#form-dialog':dialog,'#form-content':{},'#toast':toast};
   const c=runtime({location:{hash:'',href:'https://example.test/',pathname:'/',search:'',assign:()=>{redirected=true;}},
     window:{localStorage:{getItem:k=>storage.get(k)||null,setItem:(k,v)=>storage.set(k,v),removeItem:k=>storage.delete(k)},sessionStorage:{setItem(){}}},
-    document:{body:{dataset:{accountId:'alice',gardenId:'A',webContext:'signed-A'}},cookie:'csrftoken=valid',querySelector:s=>nodes[s],createElement:()=>({setAttribute(){},focus(){}})},
+    document:{body:{dataset:{accountId:'alice',gardenId:'A',webContext:'signed-A'}},cookie:'tradgardsrytmen_csrftoken=valid',querySelector:s=>nodes[s],createElement:()=>({setAttribute(){},focus(){}})},
     FormData:class {constructor(form){return form.elements.map(f=>[f.name,f.value]);}},
     fetch:async(url,options)=>{sent=options;return {ok:false,status,json:async()=>({error:'Kontexten har ändrats',code:'context_changed'})};}
   });

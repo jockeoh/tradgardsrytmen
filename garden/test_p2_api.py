@@ -7,6 +7,7 @@ from unittest.mock import patch
 from uuid import uuid4
 
 import jwt
+from django.conf import settings
 from cryptography.hazmat.primitives.asymmetric import rsa
 from django.contrib.auth import get_user_model
 from django.core.exceptions import ValidationError
@@ -189,7 +190,7 @@ class IdempotencyAndConflictTests(TestCase):
         self.assertEqual(denied.status_code, 403)
         self.assertEqual(denied.json()["error"]["code"], "forbidden")
         client.get("/accounts/login/")
-        token = client.cookies["csrftoken"].value
+        token = client.cookies[settings.CSRF_COOKIE_NAME].value
         allowed = client.post(
             "/api/v1/gardens/", json.dumps({"name": "Min"}),
             content_type="application/json", HTTP_IDEMPOTENCY_KEY=str(uuid4()),

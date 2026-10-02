@@ -1,6 +1,7 @@
 from datetime import timedelta
 from uuid import uuid4
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import TestCase, Client, override_settings
 from django.utils import timezone
@@ -22,7 +23,7 @@ class PrivateMobileTests(TestCase):
         response = self.login()
         self.assertEqual(response.status_code, 200)
         token = response.json()["token"]
-        self.assertNotIn("sessionid", response.cookies)
+        self.assertNotIn(settings.SESSION_COOKIE_NAME, response.cookies)
         self.assertNotEqual(MobileSession.objects.get().token_hash, token)
         headers = {"HTTP_AUTHORIZATION": "Bearer " + token}
         self.assertEqual(self.client.get("/api/v1/me/", **headers).status_code, 200)
