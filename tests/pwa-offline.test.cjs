@@ -191,7 +191,7 @@ test('shipped UI clears tab drafts at logout and cannot restore them across sess
 test('shipped login gate retries failed pending logout before submitting login',async()=>{
  const h=harness(),[e,id]=await ready(h);await e.enqueue(id,await form(e));h.offline=true;await assert.rejects(e.logout());
  let submit,submissions=0;
- const document={cookie:'csrftoken=rotated',body:{dataset:{}},addEventListener:(name,fn)=>{if(name==='submit')submit=fn;},getElementById:()=>null,createElement:()=>({setAttribute(){}})};
+ const document={cookie:'csrftoken=foreign; tradgardsrytmen_csrftoken=rotated',body:{dataset:{}},addEventListener:(name,fn)=>{if(name==='submit')submit=fn;},getElementById:()=>null,createElement:()=>({setAttribute(){}})};
  const context=vm.createContext({GardenOffline:{create:()=>h.client(),KEY},localStorage:h.storage,navigator:{locks:{request(){}}},
   document,window:{fetch(){}},location:{origin:'test',pathname:'/accounts/login/',href:'https://test/accounts/login/'},URL,
   HTMLFormElement:{prototype:{submit(){assert.equal(h.raw.logout,false);assert.equal(h.storage.getItem('garden.m2.stop'),null);submissions++;}}}});

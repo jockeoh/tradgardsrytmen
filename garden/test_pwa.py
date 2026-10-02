@@ -1,6 +1,7 @@
 import json
 from datetime import date
 from uuid import uuid4
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 from .models import Garden, GardenItem, GardenMembership, TaskOccurrence, IdempotencyRecord
@@ -25,7 +26,7 @@ class PwaTests(TestCase):
 
     def post(self, path=None, body=None, csrf=True, context=None, key=None):
         headers = {'HTTP_X_GARDEN_CONTEXT': context or self.c['token'], 'HTTP_IDEMPOTENCY_KEY': key or self.key}
-        if csrf: headers['HTTP_X_CSRFTOKEN'] = self.client.cookies['csrftoken'].value
+        if csrf: headers['HTTP_X_CSRFTOKEN'] = self.client.cookies[settings.CSRF_COOKIE_NAME].value
         return self.client.post(path or self.url, json.dumps(body or {'expected_version':1}), content_type='application/json', **headers)
 
     def test_frozen_retry_and_reconciliation_share_v1_receipt(self):
@@ -83,14 +84,14 @@ class PwaTests(TestCase):
 
     def test_old_page_logout_and_login_rotate_browser_boundary(self):
         marker=self.client.cookies['garden_session_boundary'].value
-        self.client.post('/accounts/logout/',HTTP_X_CSRFTOKEN=self.client.cookies['csrftoken'].value)
+        self.client.post('/accounts/logout/',HTTP_X_CSRFTOKEN=self.client.cookies[settings.CSRF_COOKIE_NAME].value)
         self.assertNotEqual(self.client.cookies['garden_session_boundary'].value,marker)
         self.assertEqual(self.post().status_code,401)
 
     def test_garden_selection_invalidates_old_page_and_boundary(self):
         GardenMembership.objects.create(user=self.a,garden=self.other,role='member')
         marker=self.client.cookies['garden_session_boundary'].value
-        self.client.post('/gardens/select/',{'garden_id':str(self.other.public_id)},HTTP_X_CSRFTOKEN=self.client.cookies['csrftoken'].value)
+        self.client.post('/gardens/select/',{'garden_id':str(self.other.public_id)},HTTP_X_CSRFTOKEN=self.client.cookies[settings.CSRF_COOKIE_NAME].value)
         self.assertNotEqual(self.client.cookies['garden_session_boundary'].value,marker)
         self.assertEqual(self.post().status_code,409)
 
@@ -99,26 +100,26 @@ class PwaTests(TestCase):
         response = client.get('/worklist/')
         self.assertEqual(response.status_code, 200)
         self.assertIn(b'Arbetslista', b''.join(response.streaming_content))
-        self.assertNotIn('csrftoken', client.cookies)
+        self.assertNotIn(settings.CSRF_COOKIE_NAME, client.cookies)
         self.assertEqual(client.post('/accounts/logout/', HTTP_X_CSRFTOKEN='').status_code, 403)
         self.assertEqual(client.get('/accounts/login/').status_code, 200)
-        token = client.cookies['csrftoken'].value
+        token = client.cookies[settings.CSRF_COOKIE_NAME].value
         self.assertEqual(client.post('/accounts/logout/', HTTP_X_CSRFTOKEN=token).status_code, 302)
         self.assertEqual(IdempotencyRecord.objects.count(), 0)
 
     def test_pending_logout_requires_rotated_csrf_but_keeps_membership(self):
-        old_token = self.client.cookies['csrftoken'].value
+        old_token = self.client.cookies[settings.CSRF_COOKIE_NAME].value
         grant = self.member.pk
         response = self.client.post('/accounts/login/', {
             'username': 'm2-a', 'password': 'synthetic-test-only',
             'csrfmiddlewaretoken': old_token,
         })
         self.assertEqual(response.status_code, 302)
-        current = self.client.cookies['csrftoken'].value
+        current = self.client.cookies[settings.CSRF_COOKIE_NAME].value
         self.assertNotEqual(current, old_token)
         self.assertEqual(self.client.post('/accounts/logout/', HTTP_X_CSRFTOKEN=old_token).status_code, 403)
         self.assertEqual(self.client.get('/accounts/login/').status_code, 200)
-        self.assertEqual(self.client.post('/accounts/logout/', HTTP_X_CSRFTOKEN=self.client.cookies['csrftoken'].value).status_code, 302)
+        self.assertEqual(self.client.post('/accounts/logout/', HTTP_X_CSRFTOKEN=self.client.cookies[settings.CSRF_COOKIE_NAME].value).status_code, 302)
         self.assertEqual(GardenMembership.objects.get(user=self.a, garden=self.g).pk, grant)
         self.task.refresh_from_db()
         self.assertEqual(self.task.version, 1)

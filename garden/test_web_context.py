@@ -1,6 +1,7 @@
 """Real session/CSRF requests: two documents share cookies, never intent."""
 import json
 
+from django.conf import settings
 from django.contrib.auth import get_user_model
 from django.test import Client, TestCase
 
@@ -31,13 +32,13 @@ class WebContextTests(TestCase):
 
     def select(self, garden):
         response = self.client.post("/gardens/select/", {"garden_id": str(garden.public_id)},
-                                    HTTP_X_CSRFTOKEN=self.client.cookies["csrftoken"].value)
+                                    HTTP_X_CSRFTOKEN=self.client.cookies[settings.CSRF_COOKIE_NAME].value)
         self.assertEqual(response.status_code, 302)
 
     def create(self, context, **extra):
         return self.client.post("/api/items/", json.dumps({"name": "Ros från A", "notes": "Privat A"}),
                                 content_type="application/json", HTTP_X_GARDEN_CONTEXT=context,
-                                HTTP_X_CSRFTOKEN=self.client.cookies["csrftoken"].value, **extra)
+                                HTTP_X_CSRFTOKEN=self.client.cookies[settings.CSRF_COOKIE_NAME].value, **extra)
 
     def assert_blocked(self, context):
         for response in (self.client.get("/api/bootstrap/", HTTP_X_GARDEN_CONTEXT=context), self.create(context)):
@@ -102,7 +103,7 @@ class WebContextTests(TestCase):
             path = path.replace("<uuid:job_id>", "00000000-0000-0000-0000-000000000001")
             for method in ("get", "post", "patch", "delete"):
                 with self.subTest(path=path, method=method):
-                    response = getattr(self.client, method)(path, HTTP_X_CSRFTOKEN=self.client.cookies["csrftoken"].value)
+                    response = getattr(self.client, method)(path, HTTP_X_CSRFTOKEN=self.client.cookies[settings.CSRF_COOKIE_NAME].value)
                     self.assertEqual(response.status_code, 409)
                     self.assertEqual(response.json()["code"], "context_changed")
                     self.assertIn("no-store", response["Cache-Control"])

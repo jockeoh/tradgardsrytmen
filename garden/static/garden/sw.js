@@ -1,5 +1,5 @@
-const CACHE = "tradgardsrytmen-v17-m2";
-const ASSETS = ["/static/garden/worklist.html", "/static/garden/worklist.css?v=m2-7", "/static/garden/offline-core.js?v=m2-7", "/static/garden/worklist.js?v=m2-7", "/static/garden/offline-session.js?v=m2-7", "/static/garden/app.css?v=20260926jobs1", "/static/garden/app.js?v=20260926jobs1", "/static/garden/images/garden-hero.jpg", "/static/garden/icons/icon.svg", "/static/garden/manifest.webmanifest"];
+const CACHE = "tradgardsrytmen-v18-login";
+const ASSETS = ["/static/garden/worklist.html", "/static/garden/worklist.css?v=m2-8-login", "/static/garden/offline-core.js?v=m2-8-login", "/static/garden/worklist.js?v=m2-8-login", "/static/garden/offline-session.js?v=m2-8-login", "/static/garden/app.css?v=20260926jobs1", "/static/garden/app.js?v=20261002login1", "/static/garden/images/garden-hero.jpg", "/static/garden/icons/icon.svg", "/static/garden/manifest.webmanifest"];
 self.addEventListener("install", event => event.waitUntil(caches.open(CACHE).then(cache => cache.addAll(ASSETS))));
 self.addEventListener("activate", event => event.waitUntil(caches.keys().then(keys => Promise.all(keys.filter(k => k.startsWith("tradgardsrytmen-") && k !== CACHE).map(k => caches.delete(k))))));
 self.addEventListener("fetch", event => {

@@ -4,7 +4,7 @@
   'use strict';
   const KEY = 'garden.m2.v1', LOCK = 'garden.m2.v1', STOP = 'garden.m2.stop', WEEK = 604800000;
   const scope = c => [c.account, c.garden, c.membership].join(':');
-  function create({storage, locks, fetch: transport, now = Date.now, uuid = () => crypto.randomUUID(), origin, csrf = () => typeof document === 'undefined' ? '' : decodeURIComponent((document.cookie.match(/(?:^|; )csrftoken=([^;]*)/)||[])[1]||''), boundary = () => typeof document === 'undefined' ? null : (document.cookie.match(/(?:^|; )garden_session_boundary=([^;]*)/)||[])[1]}) {
+  function create({storage, locks, fetch: transport, now = Date.now, uuid = () => crypto.randomUUID(), origin, csrf = () => typeof document === 'undefined' ? '' : decodeURIComponent((document.cookie.match(/(?:^|; )tradgardsrytmen_csrftoken=([^;]*)/)||[])[1]||''), boundary = () => typeof document === 'undefined' ? null : (document.cookie.match(/(?:^|; )garden_session_boundary=([^;]*)/)||[])[1]}) {
     const read = () => {
       const raw = storage.getItem(KEY);
       if (!raw) return {version:1, epoch:0, active:null, logout:false, scopes:{}};

@@ -53,7 +53,7 @@ function seasonFor(month) {
 }
 
 function csrfToken() {
-  return document.cookie.split("; ").find(row => row.startsWith("csrftoken="))?.split("=")[1] || "";
+  return document.cookie.split("; ").find(row => row.startsWith("tradgardsrytmen_csrftoken="))?.split("=")[1] || "";
 }
 
 async function api(url, options = {}) {

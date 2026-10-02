@@ -23,7 +23,7 @@ document.addEventListener('submit',e=>{
   await settleSession();
   await offlineSession.deactivate();
   const csrf=e.target.querySelector('[name=csrfmiddlewaretoken]');
-  if(csrf)csrf.value=decodeURIComponent((document.cookie.match(/(?:^|; )csrftoken=([^;]*)/)||[])[1]||csrf.value);
+  if(csrf)csrf.value=decodeURIComponent((document.cookie.match(/(?:^|; )tradgardsrytmen_csrftoken=([^;]*)/)||[])[1]||csrf.value);
   if(submitter?.name){
    const f=document.createElement('input');f.type='hidden';f.name=submitter.name;f.value=submitter.value;e.target.append(f);
   }
