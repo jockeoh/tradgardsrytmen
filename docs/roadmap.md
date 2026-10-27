@@ -172,6 +172,15 @@ relevanta uppgiften **Utvärdera apparkitektur**
 som framtida spår. Ingen Expo-klient eller separat färdig L1-rapport hittades
 här. Det bevisar inte att arbete saknas på annan plats; ingen av dem markeras klar.
 
+## Framtida produktidéer
+
+- [Platsanpassad odlingsrådgivning som lär av säsongens utveckling](future-adaptive-growing.md)
+  är en potentiell framtida implementering dokumenterad 2026-10-27. Förslaget
+  kopplar växternas utveckling, väder, åtgärder och utfall till omplanering med
+  låg registreringsbörda. Ett litet försök nästa odlingssäsong föreslås före
+  eventuell kommersiell utveckling. Spåret är inte beställt eller prioriterat
+  framför befintliga uppdrag.
+
 ## Arbetsordning och beroenden
 
 | Del | Leverans | Beroende |
