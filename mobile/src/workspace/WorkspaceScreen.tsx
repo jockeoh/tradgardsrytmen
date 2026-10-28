@@ -139,7 +139,8 @@ export function WorkspaceScreen(){
  {page==='history'&&<><Text style={styles.title}>Historik</Text>{data.history.map(taskCard)}{!data.history.length&&<Text style={styles.muted}>Ingen historik ännu.</Text>}</>}
  {page==='shopping'&&<Shopping key={localScopeKey(scope)} storageKey={`garden-shopping:${localScopeKey(scope)}`}/>}
  {page==='review'&&<><Text style={styles.title}>Skötselförslag</Text>{data.proposals.length?data.proposals.map(plan=>{
-  const fingerprint=JSON.stringify([data.context,data.revision,plan.comparison?.token]),previous=reviews[plan.id];
+  // The signed context renews on reads; only domain or membership changes reset a review.
+  const fingerprint=JSON.stringify([scope.account,data.garden_id,data.membership,data.revision,plan.comparison?.token]),previous=reviews[plan.id];
   const draft=previous?.fingerprint===fingerprint?previous:reviewDraft(plan,fingerprint);
   return <Review key={plan.id} plan={plan} draft={draft} changed={!!previous&&previous.fingerprint!==fingerprint} change={value=>setReviews(old=>({...old,[plan.id]:value}))} editRule={rule=>void begin(ruleEdit(data,rule))} approve={(rule_ids,resolutions)=>action('proposal.approve',plan.proposal_id,{rule_ids,comparison_token:plan.comparison?.token,resolutions},'Godkänn valda råd',`${rule_ids.length} råd blir din nya plan. Tidigare historik bevaras.`)} reject={()=>action('proposal.reject',plan.proposal_id,{},'Avvisa skötselförslaget',plan.summary)}/>;
  }):<Text style={styles.muted}>Inga förslag väntar på granskning.</Text>}</>}

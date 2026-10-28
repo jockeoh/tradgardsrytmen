@@ -128,7 +128,7 @@ for(const kind of ['plant','profile','area','rule'])test(`F02 ${kind} draft surv
  }finally{await act(async()=>root.unmount());}
 });
 
-test('F03 review selections and explanations survive editor return and tab navigation',async()=>{
+test('F03 review selections and explanations survive navigation and a renewed context token',async()=>{
  const data=base();data.proposals=[pendingPlan()];
  const calls:Request[]=[];await mount(data,r=>{calls.push(r);return {ok:true};});
  try{
@@ -140,10 +140,13 @@ test('F03 review selections and explanations survive editor return and tab navig
   await press('Överblick');await press('Skötselförslag (1)');
   assert.ok(root.root.findAll(n=>n.type==='button').some(n=>n.props.accessibilityLabel==='Välj råd'));
   assert.equal(inputValue('Förklara överlapp eller koppling till tidigare arbete'),'Min omsorgsfulla förklaring');
+  data.context='renewed-grant';
   await press('Uppdatera från trädgården');
   assert.ok(root.root.findAll(n=>n.type==='button').some(n=>n.props.accessibilityLabel==='Välj råd'));
   assert.equal(inputValue('Förklara överlapp eller koppling till tidigare arbete'),'Min omsorgsfulla förklaring');
+  assert.doesNotMatch(text(),/Dina tidigare rådval och förklaringar behöver granskas på nytt/);
   await press('Godkänn valda råd');await press('Kasta utkastet och öppna nytt');await press('Bekräfta och spara');
+  assert.equal(calls[0].body!.context,'renewed-grant');
   assert.deepEqual((calls[0].body!.values as any).rule_ids,[]);
   assert.deepEqual((calls[0].body!.values as any).resolutions,{'1':'Min omsorgsfulla förklaring'});
  }finally{await act(async()=>root.unmount());}
