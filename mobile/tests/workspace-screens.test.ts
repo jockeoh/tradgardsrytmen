@@ -2,7 +2,7 @@ import './register.mjs';
 import {test} from 'node:test';
 import assert from 'node:assert/strict';
 import React from 'react';
-import {act,create,ReactTestRenderer} from 'react-test-renderer';
+import {act,create,ReactTestRenderer,ReactTestRendererJSON} from 'react-test-renderer';
 import {randomUUID} from 'node:crypto';
 import {Session} from '../src/core/session';
 import {SessionProvider} from '../src/core/runtime';
@@ -44,6 +44,27 @@ test('shopping undo refuses concurrent edits and local storage separates servers
 });
 
 function careRule(id:string,title:string):Rule{return {id,title,instructions:'En tydlig instruktion för växten.',category:'Övrigt',cadence:'monthly',start_month:3,end_month:7,scope:'hela-växten',advice_kind:'on_demand',relevance_reason:'För växtens behov.',need_condition:'När jorden är torr',source_urls:[],work_id:id,conditional:true,evidence_conflict:false,identity_change_kind:'',identity_source_id:null,one_off_date:'',one_off_end:'',works:[],item:{id:'1',name:'Ros'}};}
+
+function assertNativeText(node:ReactTestRendererJSON|ReactTestRendererJSON[]|null):void{
+ if(!node)return;
+ if(Array.isArray(node)){node.forEach(assertNativeText);return;}
+ for(const child of node.children??[]){
+  if(typeof child==='string')assert.equal(node.type,'Text',`Raw text ${JSON.stringify(child)} rendered inside ${node.type}`);
+  else assertNativeText(child);
+ }
+}
+
+for(const status of ['none','active','pending'] as const)test(`plant details with ${status} care plan render all text inside native Text`,async()=>{
+ const data=base(),rule=careRule('1','Skötselråd');
+ if(status!=='none'){
+  data.items[0].plan={id:'1',proposal_id:'1',version:1,status,summary:'Plan',warnings:[],uncertainties:[],sources:[],rules:[rule],comparison:null};
+  data.items[0].current_rules=status==='active'?[rule]:[];
+ }
+ try{
+  await mount(data,()=>({ok:true}));await press('Min trädgård');await press('Visa växt');
+  assertNativeText(root.toJSON());
+ }finally{await act(async()=>root.unmount());}
+});
 
 test('active care excludes unselected advice and includes restored older rules',async()=>{
  const data=base(),chosen=careRule('1','Godkänt råd'),rejected=careRule('2','Ej godkänt råd'),restored=careRule('3','Återställt äldre råd');

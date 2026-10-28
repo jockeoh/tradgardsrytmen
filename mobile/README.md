@@ -1,5 +1,9 @@
 # Trädgårdsrytmen — ansluten hemmaapp
 
+Förberedd privat iPhone-testmiljö: se [telefonprovet](../docs/phone-test.md).
+Den har separat beständig testdatabas, syntetiska skötselplaner och privat
+HTTPS via Tailscale. Hela nya appen körs i Expo Go.
+
 Lokal fullappsimplementation på grenen `task/full-app-rewrite`.
 Expo SDK 57 / React Native 0.86.3 / React 19.2.3 / Expo Router.
 Se [fullappsstatus och kvarvarande prov](../docs/full-app-rewrite.md) och
@@ -70,7 +74,8 @@ Befintligt Django-konto återanvänds. Vid behov finns det befintliga kommandot
 `npm run ios` / `npm run android` kräver tillgänglig Expo-/native-miljö.
 SecureStore och SQLite är SDK-moduler; nytt native-bygge behöver inkludera
 dem. iOS-/Android-export verifierar inte att modulerna kör på telefon.
-Denna dator saknar simulator/emulator; fysisk telefon är ännu inte provad.
+Denna dator saknar simulator/emulator. Telefonprovet har påbörjats på fysisk
+iPhone; aktuell verifiering och återstående steg finns i [telefonprovet](../docs/phone-test.md).
 Ingen molnbyggtjänst eller butik är aktiverad.
 
 Operatören kan återkalla ett kontos samtliga mobilinloggningar:

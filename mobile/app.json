@@ -1,7 +1,8 @@
 {
   "expo": {
-    "name": "Trädgårdsrytmen",
-    "slug": "tradgardsrytmen-m1",
+    "name": "Trädgårdsplanerare",
+    "slug": "tradgardsplanerare",
+    "owner": "jockeoh",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",

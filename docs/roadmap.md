@@ -1,5 +1,16 @@
 # Trädgårdsrytmen: genomförandeplan
 
+## Telefonprov påbörjat 2026-10-13
+
+En separat körbar testmiljö finns på `task/planner-phone-test`, bas `7082264`.
+Den använder hela Expo-appen, isolerade beständiga testdata och privat HTTPS
+via Tailscale. Se [start och telefonrunda](phone-test.md).
+Expo-kontot är `jockeoh`, projektets slug `tradgardsplanerare` enligt användaren.
+Expo-inloggningen är klar på båda enheterna och testträdgården har öppnats på
+fysisk iPhone. Ett renderingsfel i växtens skötselplan är rättat med regressionstest.
+Nästa steg är att ladda om och prova sparning och uppgiftshistorik på iPhone.
+Detta är inte en produktionsrelease eller verifierad fristående installation.
+
 ## Aktuellt mål: hela appen omskriven, 2026-09-29
 
 Användaren har förtydligat att målet är **en fullständig ersättare för den
