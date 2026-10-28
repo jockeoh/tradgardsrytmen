@@ -285,7 +285,7 @@ test("mounted form: revoked access and identical reselection retain frozen inten
   await until(() => s.garden === null);
   assert.equal(s.garden, null);
   assert.deepEqual(
-    server.calls.filter((c) => c.method === "POST").at(-1),
+    server.calls.filter((c) => c.method === "POST" && c.path === original.path).at(-1),
     original,
   );
   await act(async () => {

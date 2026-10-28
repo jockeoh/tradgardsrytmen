@@ -1,4 +1,4 @@
-.venv/
+.venv
 __pycache__/
 *.py[cod]
 db.sqlite3
@@ -8,6 +8,7 @@ staticfiles/
 *.sqlite3-*
 .tmp-data/
 backups/
+qa-verification/
 
 # Local data and signing material
 *.sqlite3

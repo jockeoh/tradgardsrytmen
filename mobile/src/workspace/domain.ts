@@ -38,8 +38,16 @@ export function ruleEdit(data:Workspace,rule:Rule):Edit {
 }
 export function editBody(edit:Edit) {
  const values={...edit.values};
+ for(const field of edit.fields)if(field.type==='lines'){
+  const value=values[field.key];
+  values[field.key]=(Array.isArray(value)?value:String(value??'').split('\n')).map(line=>String(line).trim()).filter(Boolean);
+ }
  if(edit.command==='rule.update'){values.conditional=values.advice_kind==='on_demand';if(values.identity_mode==='new')delete values.work_id;}
  return {command:edit.command,target:edit.target,values,context:edit.context,revision:edit.revision};
+}
+export function decimalNumber(value:string){
+ const text=value.trim();
+ return /^[+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)$/.test(text)?Number(text.replace(',','.')):NaN;
 }
 export function soil(shape:'bed'|'pot',length:number,width:number,diameter:number,depth:number,bag:number){
  const dims=shape==='pot'?[diameter,depth,bag]:[length,width,depth,bag];

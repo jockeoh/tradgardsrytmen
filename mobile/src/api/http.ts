@@ -29,7 +29,7 @@ export class HttpTransport implements Transport {
   constructor(
     origin: string,
     private readonly token: string,
-    private fetcher = fetch,
+    private fetcher: typeof fetch = (input, init) => globalThis.fetch(input, init),
     private timeout = 15000,
   ) {
     this.origin = serverOrigin(origin);

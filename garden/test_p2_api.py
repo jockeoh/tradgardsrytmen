@@ -153,7 +153,7 @@ class IdempotencyAndConflictTests(TestCase):
         stale = post_json(self.client, path, {"expected_version": 1, "note": "Lokalt utkast"})
         self.assertEqual(stale.status_code, 409)
         self.assertEqual(stale.json()["error"]["code"], "version_conflict")
-        self.assertEqual(IdempotencyRecord.objects.count(), 0)
+        self.assertEqual(IdempotencyRecord.objects.count(), 1)
         key = uuid4()
         first = post_json(self.client, path, {"expected_version": 2, "note": "Jorden var torr"}, key)
         replay = post_json(self.client, path, {"expected_version": 2, "note": "Jorden var torr"}, key)
@@ -165,6 +165,29 @@ class IdempotencyAndConflictTests(TestCase):
         self.assertEqual(new_intent.json()["error"]["code"], "invalid_transition")
         task.refresh_from_db()
         self.assertEqual((task.status, task.note, task.version), ("completed", "Jorden var torr", 3))
+
+    def test_rejected_completion_receipt_is_immutable_and_bound_to_original_membership(self):
+        garden = Garden.objects.create(name="Min")
+        member = GardenMembership.objects.create(user=self.user, garden=garden, role="owner")
+        plant = GardenItem.objects.create(garden=garden, name="Ros")
+        task = TaskOccurrence.objects.create(item=plant, title="Vattna", occurrence_key="manual:rejected", season_year=2026,
+            occurrence_month=9, window_start=date(2026, 9, 26), window_end=date(2026, 9, 26), manual=True, version=2)
+        path = f"/api/v1/gardens/{garden.public_id}/tasks/{task.public_id}/complete/"
+        body, key = {"expected_version": 1, "note": "Utkast"}, uuid4()
+        rejected = post_json(self.client, path, body, key)
+        self.assertEqual(rejected.status_code, 409)
+        self.assertEqual(post_json(self.client, path, body, key).json(), rejected.json())
+        receipt_body = {"path": path, "key": str(key), "body": body}
+        receipt = post_json(self.client, "/api/v1/reconcile/", receipt_body)
+        self.assertEqual(receipt.json()["state"], "rejected")
+        self.assertEqual(receipt.json()["error"]["code"], "version_conflict")
+        task.refresh_from_db()
+        self.assertEqual((task.status, task.version, task.note), ("pending", 2, ""))
+        self.assertEqual(post_json(self.client, path, dict(body, expected_version=2), key).json()["error"]["code"], "idempotency_conflict")
+        member.delete()
+        GardenMembership.objects.create(user=self.user, garden=garden, role="owner")
+        self.assertEqual(post_json(self.client, path, body, key).status_code, 404)
+        self.assertEqual(post_json(self.client, "/api/v1/reconcile/", receipt_body).status_code, 404)
 
     def test_missing_key_unknown_fields_and_cursor_context_are_stable_errors(self):
         missing = self.client.post("/api/v1/gardens/", json.dumps({"name": "Min"}), content_type="application/json")

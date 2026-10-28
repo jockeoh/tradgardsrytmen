@@ -1,5 +1,26 @@
 # Trädgårdsrytmen: genomförandeplan
 
+## Telefonpaket och rättningar verifierade 2026-10-28
+
+Telefonpaketet och F01–F08 samlas i kodbasen med regressionstester.
+[Rättningar och verifieringsgränser](qa-fixes-2026-10-28.md) beskriver
+95 mobiltester, 114 servertester, två integrationssviter samt godkänd
+typkontroll, lint och export för iOS, Android och webb. Utkast,
+rådgranskning, sparåterhämtning och lokal inköpslagring är rättade.
+Full verifiering på fysisk telefon, verklig push och produktionsaktivering
+är fortfarande separata steg. Den framtida odlingsidén nedan behålls som framtidsspår.
+
+## Telefonprov påbörjat 2026-10-13
+
+En separat körbar testmiljö finns på `task/planner-phone-test`, bas `7082264`.
+Den använder hela Expo-appen, isolerade beständiga testdata och privat HTTPS
+via Tailscale. Se [start och telefonrunda](phone-test.md).
+Expo-kontot är `jockeoh`, projektets slug `tradgardsplanerare` enligt användaren.
+Expo-inloggningen är klar på båda enheterna och testträdgården har öppnats på
+fysisk iPhone. Ett renderingsfel i växtens skötselplan är rättat med regressionstest.
+Nästa steg är att ladda om och prova sparning och uppgiftshistorik på iPhone.
+Detta är inte en produktionsrelease eller verifierad fristående installation.
+
 ## Aktuellt mål: hela appen omskriven, 2026-09-29
 
 Användaren har förtydligat att målet är **en fullständig ersättare för den

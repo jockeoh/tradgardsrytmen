@@ -1,6 +1,7 @@
 import { Journal, JournalConflict } from "./journal";
 import {
   ApiError,
+  ErrorBody,
   Me,
   Request,
   StaleContext,
@@ -107,53 +108,87 @@ export class Session {
       started: intent.started,
     }));
   }
-  async reconcile(scope: Scope, form: string) {
-    this.assert(scope);
-    const key = this.key(scope, form),
-      intent = this.intents.get(key);
-    if (!intent || intent.pending) return;
-    try {
-      const receipt = await scope.transport.request<{
-        state: string;
-        result?: unknown;
-        message?: string;
-      }>(
-        {
-          method: "POST",
-          path: "/api/v1/reconcile/",
-          body: {
-            path: intent.request.path,
-            key: intent.request.key,
-            body: intent.request.body,
-          },
+  private async settleReceipt(scope: Scope, form: string, intent: Intent): Promise<FormOutcome> {
+    const key = this.key(scope, form);
+    const assertIntent = () => {
+      this.assert(scope);
+      if (this.intents.get(key) !== intent) throw new StaleContext("Sparningen har ändrats.");
+    };
+    assertIntent();
+    const receipt = await scope.transport.request<{
+      state: string;
+      result?: unknown;
+      status?: number;
+      error?: ErrorBody["error"];
+      message?: string;
+    }>(
+      {
+        method: "POST",
+        path: "/api/v1/reconcile/",
+        body: {
+          path: intent.request.path,
+          key: intent.request.key,
+          body: intent.request.body,
         },
-        scope.signal,
-      );
-      this.assert(scope);
-      if (receipt.state !== "confirmed")
-        throw new Error(
-          receipt.message || "Utfallet måste kontrolleras av administratören.",
-        );
-      await this.journal?.put(key, {
-        request: intent.request,
-        started: intent.started,
-        draft: {},
-        result: receipt.result,
-      });
-      this.assert(scope);
+      },
+      scope.signal,
+    );
+    assertIntent();
+    if (receipt.state === "rejected" && [400, 409].includes(receipt.status ?? 0) && receipt.error) {
+      // Only an authenticated, exact-body receipt can release an uncertain
+      // intent. A later validation/access error by itself proves nothing.
+      await this.journal?.remove(key, intent.request.key!);
+      assertIntent();
+      const error = new ApiError(receipt.status!, { error: receipt.error });
+      const outcome = {
+        error,
+        reviewRequired: error.status === 409 && ["version_conflict", "invalid_transition"].includes(error.code),
+      };
       this.intents.delete(key);
-      this.drafts.delete(key);
-      this.outcomes.set(key, { result: receipt.result });
-      this.receiptKeys.set(key, intent.request.key!);
-    } catch (error) {
-      if (this.current(scope)) {
-        this.outcomes.set(key, { error });
-        this.handleAccess(scope, error);
-      }
-      throw error;
-    } finally {
-      this.publish();
+      this.outcomes.set(key, outcome);
+      return outcome;
     }
+    if (receipt.state !== "confirmed")
+      throw new Error(receipt.message || "Utfallet måste kontrolleras av administratören.");
+    await this.journal?.put(key, {
+      request: intent.request,
+      started: intent.started,
+      draft: {},
+      result: receipt.result,
+    });
+    assertIntent();
+    this.intents.delete(key);
+    this.drafts.delete(key);
+    const outcome = { result: receipt.result };
+    this.outcomes.set(key, outcome);
+    this.receiptKeys.set(key, intent.request.key!);
+    return outcome;
+  }
+  reconcile(scope: Scope, form: string): Promise<unknown> {
+    this.assert(scope);
+    const key = this.key(scope, form), intent = this.intents.get(key);
+    if (!intent) return Promise.resolve();
+    if (intent.pending) return intent.pending;
+    // Reconciliation is part of the same single-flight intent as submission.
+    // A second tap must never retain a stale receipt/removal past a new edit.
+    intent.pending = Promise.resolve().then(async () => {
+      try {
+        const outcome = await this.settleReceipt(scope, form, intent);
+        if (outcome.error) throw outcome.error;
+        return outcome.result;
+      } catch (error) {
+        if (this.current(scope)) {
+          if (this.intents.get(key) === intent) this.outcomes.set(key, { error });
+          this.handleAccess(scope, error);
+        }
+        throw error;
+      } finally {
+        intent.pending = undefined;
+        this.publish();
+      }
+    });
+    this.publish();
+    return intent.pending;
   }
   logout() {
     this.account = null;
@@ -375,13 +410,19 @@ export class Session {
             error.status >= 500;
           if (retryable) captured.uncertain = true;
           if (!retryable) {
-            // A prior timeout may already have committed: don't discard that intention on a later 403/400.
-            if (
-              !captured.uncertain ||
-              (error instanceof ApiError &&
-                error.status === 409 &&
-                ["version_conflict", "invalid_transition"].includes(error.code))
-            ) {
+            if (captured.uncertain) {
+              let resolved: FormOutcome | undefined;
+              try {
+                resolved = await this.settleReceipt(scope, form, captured);
+              } catch {
+                // Unknown receipts, lost reconciliation responses or failed
+                // local persistence must keep the original intent frozen.
+                this.assert(scope);
+              }
+              if (resolved?.result !== undefined) return resolved.result as T;
+              if (resolved?.error) throw resolved.error;
+            }
+            if (!captured.uncertain) {
               if (journal) await journal.remove(key, captured.request.key!);
               this.assert(scope);
               this.intents.delete(key);
@@ -389,6 +430,7 @@ export class Session {
             this.outcomes.set(key, {
               error,
               reviewRequired:
+                !this.intents.has(key) &&
                 error instanceof ApiError &&
                 error.status === 409 &&
                 ["version_conflict", "invalid_transition"].includes(error.code),

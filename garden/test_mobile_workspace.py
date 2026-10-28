@@ -4,7 +4,7 @@ from uuid import uuid4
 from unittest.mock import patch
 from django.contrib.auth import get_user_model
 from django.test import TestCase, override_settings
-from .models import Garden, GardenMembership, GardenItem, TaskOccurrence, IdempotencyRecord, BackgroundJob, PushSubscription
+from .models import Garden, GardenMembership, GardenItem, GardenArea, TaskOccurrence, IdempotencyRecord, BackgroundJob, PushSubscription
 
 
 class WorkspaceTests(TestCase):
@@ -42,7 +42,7 @@ class WorkspaceTests(TestCase):
         conflict=self.post(body);self.assertEqual(conflict.status_code,409)
         receipt=self.client.post('/api/v1/reconcile/',json.dumps({'path':self.url,'key':key,'body':body}),content_type='application/json')
         self.assertEqual(receipt.json()['state'],'confirmed')
-        self.assertEqual(IdempotencyRecord.objects.count(),1)
+        self.assertEqual(IdempotencyRecord.objects.count(),2)
 
     def test_recreated_membership_cannot_replay_or_reconcile(self):
         body=self.body('plant.update',self.item.pk,{'name':'Ny'});key=str(uuid4());self.post(body,key)
@@ -50,6 +50,50 @@ class WorkspaceTests(TestCase):
         self.assertEqual(self.post(body,key).status_code,404)
         result=self.client.post('/api/v1/reconcile/',json.dumps({'path':self.url,'key':key,'body':body}),content_type='application/json')
         self.assertEqual(result.status_code,404)
+
+    def test_rejected_intent_replays_reconciles_and_requires_new_key_for_correction(self):
+        body = self.body('area.create', values={'name': ''})
+        key = str(uuid4())
+        rejected = self.post(body, key)
+        self.assertEqual(rejected.status_code, 400)
+        self.assertEqual(self.post(body, key).json(), rejected.json())
+        self.assertFalse(GardenArea.objects.exists())
+        receipt = self.client.post('/api/v1/reconcile/', json.dumps({'path': self.url, 'key': key, 'body': body}), content_type='application/json')
+        self.assertEqual(receipt.json()['state'], 'rejected')
+        self.assertEqual(receipt.json()['status'], 400)
+        self.assertEqual(receipt.json()['error'], rejected.json()['error'])
+        corrected = dict(body, values={'name': 'Framsida'})
+        self.assertEqual(self.post(corrected, key).json()['error']['code'], 'idempotency_conflict')
+        self.assertEqual(self.post(corrected).status_code, 201)
+        self.assertEqual(GardenArea.objects.count(), 1)
+        self.member.delete()
+        GardenMembership.objects.create(garden=self.garden, user=self.user, role='owner')
+        self.assertEqual(self.post(body, key).status_code, 404)
+        self.assertEqual(self.client.post('/api/v1/reconcile/', json.dumps({'path': self.url, 'key': key, 'body': body}), content_type='application/json').status_code, 404)
+
+    def test_rejection_receipt_commits_but_partial_domain_writes_roll_back(self):
+        from django.http import JsonResponse
+        def partial_write(request):
+            GardenArea.objects.create(garden=self.garden, name='Must roll back')
+            return JsonResponse({'error': 'Avvisad'}, status=400)
+        body = self.body('area.create', values={'name': 'Test'})
+        with patch.dict('garden.mobile_workspace.OPERATIONS', {'area.create': (partial_write, 'POST', None)}):
+            response = self.post(body)
+        self.assertEqual(response.status_code, 400)
+        self.assertFalse(GardenArea.objects.exists())
+        self.assertEqual(IdempotencyRecord.objects.get().response_status, 400)
+
+    def test_success_receipt_is_replayed_before_revalidation(self):
+        body = self.body('area.create', values={'name': 'Framsida'})
+        key = str(uuid4())
+        first = self.post(body, key)
+        self.assertEqual(first.status_code, 201)
+        with patch('garden.mobile_workspace.validate', side_effect=ValueError('New validation')) as validate:
+            repeated = self.post(body, key)
+        self.assertEqual(repeated.status_code, first.status_code)
+        self.assertEqual(repeated.json(), first.json())
+        validate.assert_not_called()
+        self.assertEqual(GardenArea.objects.count(), 1)
 
     def test_foreign_target_never_changes(self):
         other=Garden.objects.create(name='Other');item=GardenItem.objects.create(garden=other,name='Private')
@@ -81,12 +125,14 @@ class WorkspaceTests(TestCase):
         self.assertEqual(BackgroundJob.objects.count(),1)
         self.assertEqual(self.post(self.body('research.start',self.item.pk,{'consent':False})).status_code,400)
 
-    def test_unknown_and_invalid_fields_fail_without_receipt(self):
+    def test_invalid_envelope_has_no_receipt_but_valid_intents_retain_rejections(self):
         malformed=self.body('plant.update',self.item.pk,{'name':'test'});malformed['context']={}
         self.assertEqual(self.post(malformed).status_code,400)
+        self.assertFalse(IdempotencyRecord.objects.exists())
         for values in [{'quantity':True},{'quantity':0},{'notes':None},{'garden_id':'other'},{'name':''}]:
             self.assertEqual(self.post(self.body('plant.update',self.item.pk,values)).status_code,400)
-        self.assertFalse(IdempotencyRecord.objects.exists())
+        self.assertEqual(IdempotencyRecord.objects.count(), 5)
+        self.assertEqual(set(IdempotencyRecord.objects.values_list('response_status', flat=True)), {400})
 
     @override_settings(NATIVE_PUSH_ENABLED=True, PRIVATE_MOBILE_AUTH=True)
     def test_native_subscription_is_grant_bound_and_never_sends_at_registration(self):

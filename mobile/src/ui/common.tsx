@@ -252,7 +252,12 @@ export function useResource<T>(path: string | null) {
       ? state
       : { loading: true, data: undefined, error: undefined };
   const reload = useCallback(() => refresh((v) => v + 1), []);
-  return { ...visible, reload };
+  const replace = (data: T) => {
+    // A verified newer snapshot supersedes any read already in flight.
+    request.current++;
+    set({ epoch: session.epoch, path, loading: false, data });
+  };
+  return { ...visible, reload, replace };
 }
 export function PagedList<T extends { id: string }>({
   path,
