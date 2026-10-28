@@ -4,25 +4,29 @@ import { randomUUID } from 'expo-crypto';
 import { Button, Field, styles } from '../ui/common';
 import { journalStore } from '../core/storage';
 import { ShoppingRow } from './types';
-import { undoShopping } from './local';
-import { soil } from './domain';
+import { readShopping, undoShopping, updateShopping } from './local';
+import { decimalNumber, soil } from './domain';
 export function Shopping({storageKey}:{storageKey:string}){
+ return <ShoppingList key={storageKey} storageKey={storageKey}/>;
+}
+function ShoppingList({storageKey}:{storageKey:string}){
  const [rows,setRows]=useState<ShoppingRow[]>([]),[loaded,setLoaded]=useState(false),[error,setError]=useState(''),[name,setName]=useState('');
  const [undo,setUndo]=useState<{before:ShoppingRow[];after:ShoppingRow[]}|null>(null),[busy,setBusy]=useState(false);
  const [shape,setShape]=useState<'bed'|'pot'>('bed'),[length,setLength]=useState('120'),[width,setWidth]=useState('80'),[diameter,setDiameter]=useState('40'),[depth,setDepth]=useState('20'),[bag,setBag]=useState('40');
  const alive=useRef(true),writing=useRef(false);
- useEffect(()=>{alive.current=true;journalStore.getItem(storageKey).then(raw=>{if(alive.current){setRows(raw?JSON.parse(raw):[]);setLoaded(true);}}).catch(()=>{if(alive.current)setError('Listan kunde inte läsas. Befintliga data behålls.');});return()=>{alive.current=false;};},[storageKey]);
+ useEffect(()=>{alive.current=true;let cancelled=false;readShopping(journalStore,storageKey).then(saved=>{if(!cancelled){setRows(saved);setLoaded(true);}}).catch(()=>{if(!cancelled)setError('Listan kunde inte läsas. Befintliga data behålls.');});return()=>{cancelled=true;alive.current=false;};},[storageKey]);
  async function change(update:(old:ShoppingRow[])=>ShoppingRow[],isUndo=false){
   if(!loaded||writing.current)return false;writing.current=true;setBusy(true);setError('');
   try{
-   const work=async()=>{const raw=await journalStore.getItem(storageKey),before:ShoppingRow[]=raw?JSON.parse(raw):[],next=update(before);await journalStore.setItem(storageKey,JSON.stringify(next));if(alive.current){setRows(next);setUndo(isUndo?null:{before,after:next});}};
-   if(journalStore.withLock)await journalStore.withLock(storageKey,work);else await work();
+   const saved=await updateShopping(journalStore,storageKey,update);
+   if(alive.current){setRows(saved.after);setUndo(isUndo?null:saved);}
    return true;
   }catch(e){if(alive.current)setError(e instanceof Error?e.message:'Listan kunde inte sparas. Försök igen.');return false;}finally{writing.current=false;if(alive.current)setBusy(false);}
  }
- const result=soil(shape,Number(length),Number(width),Number(diameter),Number(depth),Number(bag));
+ const result=soil(shape,decimalNumber(length),decimalNumber(width),decimalNumber(diameter),decimalNumber(depth),decimalNumber(bag));
  return <View style={{gap:18}}>
   <Text style={styles.title}>Inköpslista</Text><Text style={styles.muted}>Sparas på den här enheten för din trädgård.</Text>
+  {!loaded&&!error&&<Text style={styles.muted}>Läser inköpslistan…</Text>}
   <Field label="Lägg till" value={name} onChange={setName}/><Button title="Lägg till i listan" disabled={!loaded||busy||!name.trim()} onPress={()=>{const value=name.trim();void change(old=>[...old,{id:randomUUID(),name:value,detail:'',done:false}]).then(saved=>{if(saved&&alive.current)setName(current=>current.trim()===value?'':current);});}}/>
   {rows.map(row=><View key={row.id} style={styles.card}><Text style={styles.text}>{row.done?'✓ ':''}{row.name}</Text>{!!row.detail&&<Text style={styles.muted}>{row.detail}</Text>}<View style={styles.row}><Button title={row.done?'Återställ':'Inköpt'} secondary disabled={busy} onPress={()=>void change(old=>old.map(r=>r.id===row.id?{...r,done:!r.done}:r))}/><Button title="Ta bort" secondary disabled={busy} onPress={()=>void change(old=>old.filter(r=>r.id!==row.id))}/></View></View>)}
   {!!undo&&<Button title="Ångra senaste ändringen" secondary disabled={busy} onPress={()=>void change(old=>undoShopping(old,undo.before,undo.after),true)}/>}

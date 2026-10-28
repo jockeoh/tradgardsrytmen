@@ -41,7 +41,7 @@
     "test": "node --import tsx --test tests/*.test.ts",
     "lint": "expo lint",
     "export": "expo export --platform all",
-    "test:integration": "node --import tsx --test tests/http.integration.ts"
+    "test:integration": "node --import tsx --test tests/*.integration.ts"
   },
   "private": true,
   "engines": {

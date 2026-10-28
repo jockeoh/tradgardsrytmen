@@ -119,7 +119,7 @@ def request_hash(body):
     return hashlib.sha256(canonical.encode()).hexdigest()
 
 
-def idempotent_mutation(request, body, callback, replay_authorized=None):
+def idempotent_mutation(request, body, callback, replay_authorized=None, retain_errors=False):
     key = idempotency_key(request)
     if key is None:
         return api_error("validation_error", "Kontrollera uppgifterna.", 400, {"idempotency_key": ["invalid"]})
@@ -137,8 +137,14 @@ def idempotent_mutation(request, body, callback, replay_authorized=None):
     try:
         with transaction.atomic():
             record = IdempotencyRecord.objects.create(request_hash=fingerprint, **lookup)
-            status, payload = callback()
-            if status < 200 or status >= 300:
+            # Roll domain work back independently of the receipt. A retained
+            # rejection proves this exact intent never committed, including if
+            # its response is lost and the client later reconciles it.
+            with transaction.atomic():
+                status, payload = callback()
+                if status < 200 or status >= 300:
+                    transaction.set_rollback(True)
+            if not (200 <= status < 300 or retain_errors and status in (400, 409)):
                 transaction.set_rollback(True)
                 return JsonResponse(payload, status=status)
             record.response_status = status

@@ -295,13 +295,17 @@ def complete_task(request, garden_id, task_id):
     if note is not None and (not isinstance(note, str) or len(note) > 10000):
         return api_error("validation_error", "Kontrollera uppgifterna.", 400, {"note": ["too_long" if isinstance(note, str) else "invalid"]})
 
+    def rejected(code, message):
+        return 409, {"protocol": "task-completion-1", "garden_id": str(garden_id), "membership": membership.pk,
+                     "error": {"code": code, "message": message, "fields": {}, "request_id": f"req_{uuid4().hex}"}}
+
     def complete():
         lock_garden(membership.garden_id)
         locked = TaskOccurrence.objects.select_for_update(of=("self",)).select_related("item", "item__garden").get(pk=task.pk)
         if locked.version != data["expected_version"]:
-            return 409, {"error": {"code": "version_conflict", "message": "Uppgiften har ändrats. Hämta den senaste versionen.", "fields": {}, "request_id": f"req_{uuid4().hex}"}}
+            return rejected("version_conflict", "Uppgiften har ändrats. Hämta den senaste versionen.")
         if locked.status != "pending":
-            return 409, {"error": {"code": "invalid_transition", "message": "Uppgiften kan inte markeras klar från sitt nuvarande läge.", "fields": {}, "request_id": f"req_{uuid4().hex}"}}
+            return rejected("invalid_transition", "Uppgiften kan inte markeras klar från sitt nuvarande läge.")
         locked.status = "completed"
         locked.completed_at = timezone.now()
         if note is not None:
@@ -310,7 +314,10 @@ def complete_task(request, garden_id, task_id):
         locked.save(update_fields=["status", "completed_at", "note", "version", "updated_at"])
         return 200, _task_json(locked)
 
-    return idempotent_mutation(request, data, complete)
+    def replay_allowed(payload):
+        return payload.get("protocol") != "task-completion-1" or payload.get("membership") == membership.pk
+
+    return idempotent_mutation(request, data, complete, replay_allowed, retain_errors=True)
 
 
 @require_POST
@@ -335,7 +342,9 @@ def reconcile(request):
     member = _membership(request.api_user, garden_id) if garden_id else None
     if not member:
         return api_error("not_found", "Resursen finns inte.", 404)
-    if payload.get("protocol") == "workspace-1":
+    if payload.get("protocol") in ("workspace-1", "task-completion-1"):
         if payload.get("membership") != member.pk:
             return api_error("not_found", "Ursprunglig åtkomst finns inte.", 404)
+    if record.response_status in (400, 409):
+        return JsonResponse({"state": "rejected", "status": record.response_status, "error": payload["error"]})
     return JsonResponse({"state": "confirmed", "result": payload})

@@ -208,18 +208,16 @@ def workspace(request, garden_id):
             return api_error('not_found', 'Åtkomsten har ändrats. Öppna trädgården igen.', 404)
     except (signing.BadSignature, TypeError):
         return api_error('not_found', 'Åtkomsten har ändrats.', 404)
-    command = body['command']
-    if not isinstance(command,str) or command not in ALLOWED:
-        return api_error('validation_error', 'Okänd handling.', 400)
-    try:
+    def apply_command():
+        command = body['command']
+        if not isinstance(command, str) or command not in ALLOWED:
+            raise ValueError('Okänd handling.')
         values = validate(command, body['values'])
         target = body['target']
-        if target is not None and (not isinstance(target,str) or not target.isdecimal() or int(target)<1): raise ValueError('Ogiltig referens.')
-        if (command in OPERATIONS and OPERATIONS[command][2] or command=='research.start') and target is None: raise ValueError('Referens krävs.')
-    except (ValueError, TypeError) as exc:
-        return api_error('validation_error', str(exc), 400)
-
-    def apply():
+        if target is not None and (not isinstance(target, str) or not target.isdecimal() or int(target) < 1):
+            raise ValueError('Ogiltig referens.')
+        if (command in OPERATIONS and OPERATIONS[command][2] or command == 'research.start') and target is None:
+            raise ValueError('Referens krävs.')
         if body['revision'] != revision(member.garden):
             return 409, {'error': {'code':'version_conflict','message':'Trädgården har ändrats. Hämta senaste underlaget och granska innan du sparar.','fields':{}}}
         if command == 'research.start':
@@ -248,12 +246,24 @@ def workspace(request, garden_id):
         return status, {'protocol':PROTOCOL,'garden_id':str(garden_id), 'membership':member.pk,
                         'result':opaque(payload)}
 
+    def apply():
+        try:
+            # Exceptions must roll back domain writes before recording rejection.
+            with transaction.atomic():
+                status, payload = apply_command()
+        except (ValidationError, ValueError, TypeError, IntegrityError) as exc:
+            message = str(exc) if isinstance(exc, (ValueError, TypeError)) else 'Kontrollera uppgifterna och hämta senaste underlaget.'
+            status, payload = 400, {'error': {'code': 'validation_error', 'message': message, 'fields': {}}}
+        if status in (400, 409):
+            payload = dict(payload, protocol=PROTOCOL, garden_id=str(garden_id), membership=member.pk)
+        return status, payload
+
     try:
         with transaction.atomic():
             lock_garden(member.garden_id)
             if not GardenMembership.objects.select_for_update().filter(pk=member.pk, user=request.api_user, user__is_active=True).exists():
                 return api_error('not_found', 'Åtkomsten har ändrats.', 404)
-            return idempotent_mutation(request, body, apply)
+            return idempotent_mutation(request, body, apply, retain_errors=True)
     except Http404:
         return api_error('not_found','Resursen finns inte.',404)
     except (ValidationError, ValueError, TypeError, IntegrityError) as exc:

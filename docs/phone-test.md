@@ -6,6 +6,12 @@ Expo-projektets namn/ägare enligt användaren: `@jockeoh/tradgardsplanerare`.
 Detta kör hela nya appen i Expo Go. Det är ännu inte en fristående
 App Store-/TestFlight-installation. Telefonprovet är påbörjat men inte slutfört.
 
+Senaste automatiska verifieringen, 2026-10-28: telefonpaketet och F01–F08
+är rättade och testade. Se [rättningar och testresultat](qa-fixes-2026-10-28.md).
+Starta från den uppdaterade arbetskopian för att köra rättningarna; en push
+till GitHub uppdaterar inte en redan körande Expo-session. Testdata ligger
+lokalt i `.tmp-data/phone-test` och ska bevaras när arbetskopior städas.
+
 ## Öppna på iPhone
 
 1. Installera Expo Go och logga in som `jockeoh`. Tailscale ska vara på.

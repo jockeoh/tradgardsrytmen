@@ -4,7 +4,8 @@ Förberedd privat iPhone-testmiljö: se [telefonprovet](../docs/phone-test.md).
 Den har separat beständig testdatabas, syntetiska skötselplaner och privat
 HTTPS via Tailscale. Hela nya appen körs i Expo Go.
 
-Lokal fullappsimplementation på grenen `task/full-app-rewrite`.
+Ansluten fullappsimplementation med telefonpaket och verifierade rättningar.
+Se även [F01–F08 och testresultat](../docs/qa-fixes-2026-10-28.md).
 Expo SDK 57 / React Native 0.86.3 / React 19.2.3 / Expo Router.
 Se [fullappsstatus och kvarvarande prov](../docs/full-app-rewrite.md) och
 [workspace-kontraktet](../docs/workspace-api.md).

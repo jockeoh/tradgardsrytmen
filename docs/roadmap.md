@@ -1,5 +1,15 @@
 # Trädgårdsrytmen: genomförandeplan
 
+## Telefonpaket och rättningar verifierade 2026-10-28
+
+Telefonpaketet och F01–F08 samlas i kodbasen med regressionstester.
+[Rättningar och verifieringsgränser](qa-fixes-2026-10-28.md) beskriver
+95 mobiltester, 114 servertester, två integrationssviter samt godkänd
+typkontroll, lint och export för iOS, Android och webb. Utkast,
+rådgranskning, sparåterhämtning och lokal inköpslagring är rättade.
+Full verifiering på fysisk telefon, verklig push och produktionsaktivering
+är fortfarande separata steg. Den framtida odlingsidén nedan behålls som framtidsspår.
+
 ## Telefonprov påbörjat 2026-10-13
 
 En separat körbar testmiljö finns på `task/planner-phone-test`, bas `7082264`.

@@ -14,6 +14,8 @@ import { localScopeKey } from './local';
 type Page='home'|'plants'|'year'|'shopping'|'settings'|'review'|'history';
 const names:Record<Page,string>={home:'Överblick',plants:'Min trädgård',year:'Årshjulet',shopping:'Inköp',settings:'Inställningar',review:'Skötselförslag',history:'Historik'};
 const FORM='workspace';
+type ReviewDraft={fingerprint:string;selected:string[];resolutions:Record<string,string>};
+function reviewDraft(plan:Plan,fingerprint:string):ReviewDraft{return {fingerprint,selected:plan.comparison?.rows.filter(r=>r.preselected&&!r.error).map(r=>r.rule_id)??[],resolutions:{}};}
 function groupTasks(tasks:Task[],key:(task:Task)=>string){return tasks.reduce<Record<string,Task[]>>((groups,task)=>{(groups[key(task)]??=[]).push(task);return groups;},{});}
 function message(e:unknown){return e instanceof Error?e.message:'Kunde inte spara. Försök igen.';}
 function RuleTiming({rule}:{rule:Rule}){
@@ -32,16 +34,28 @@ export function WorkspaceScreen(){
  const [year,setYear]=useState(new Date().getFullYear()),[month,setMonth]=useState(new Date().getMonth()+1);
  const [editor,setEditor]=useState<Edit|null>(()=>{try{const raw=session.draft(scope,FORM).editor;return raw&&!session.outcome(scope,FORM)?.result?JSON.parse(raw):null;}catch{return null;}});
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
+ const [replacement,setReplacement]=useState<Edit|null>(null);
+ const [reviews,setReviews]=useState<Record<string,ReviewDraft>>({});
  const mounted=useRef(true),saving=useRef(false);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
  const confirmed=session.outcome(scope,FORM)?.result;
  const current=()=>mounted.current&&session.current(scope);
  function change(next:Edit){session.setDraft(scope,FORM,{editor:JSON.stringify(next)});setEditor(next);}
- async function begin(next:Edit){
-  if(!current())return;setError('');setNotice('');
-  try{await session.startNew(scope,FORM);if(current()){change(next);setPlantId(null);setTaskId(null);}}
+ async function openEditor(next:Edit){
+  try{await session.startNew(scope,FORM);if(current()){setReplacement(null);change(next);setPlantId(null);setTaskId(null);}}
   catch(e){if(current()){setError(message(e));const raw=session.draft(scope,FORM).editor;if(raw)setEditor(JSON.parse(raw));}}
  }
+ async function begin(next:Edit){
+  if(!current())return;setError('');setNotice('');
+  const raw=session.draft(scope,FORM).editor;
+  if(raw&&!confirmed){
+   if(session.locked(scope,FORM)){setError('Pågående eller oklart sparande måste avslutas först.');setEditor(JSON.parse(raw));return;}
+   if(raw===JSON.stringify(next)){setEditor(JSON.parse(raw));return;}
+   setReplacement(next);return;
+  }
+  await openEditor(next);
+ }
+ function resumeDraft(){setReplacement(null);setEditor(JSON.parse(session.draft(scope,FORM).editor));}
  async function save(){
   if(!editor||saving.current||!current())return;saving.current=true;setBusy(true);setError('');
   try{await session.submit(scope,FORM,path,editBody(editor));if(current()){setEditor(null);setNotice('Sparat.');resource.reload();}}
@@ -54,7 +68,13 @@ export function WorkspaceScreen(){
   if(!editor||!current())return;setBusy(true);setError('');
   try{const fresh=await session.read<Workspace>(scope,path);if(!current())return;
    if(fresh.membership!==data?.membership)throw new Error('Åtkomsten har ändrats. Öppna trädgården igen.');
-   if(editor.command.startsWith('proposal.'))throw new Error('Öppna skötselförslaget igen och granska den nya jämförelsen innan du väljer råd.');
+   if(editor.command.startsWith('proposal.')){
+    // Retire only this rejected intent. Approval must be built again from the fresh comparison.
+    await session.startNew(scope,FORM);if(!current())return;
+    resource.replace(fresh);setEditor(null);setReplacement(null);setPlantId(null);setTaskId(null);setPage('review');
+    setNotice('Underlaget har ändrats. Den senaste jämförelsen visas. Granska råden och bekräfta ditt val igen.');
+    return;
+   }
    let latest:Record<string,unknown>={};
    if(editor.command==='plant.update'){
     const row=fresh.items.find(p=>p.id===editor.target);if(!row)throw new Error('Växten finns inte längre.');latest=plantEdit(fresh,row).values;
@@ -67,10 +87,10 @@ export function WorkspaceScreen(){
     const row=fresh.areas.find(a=>a.id===editor.target);if(!row)throw new Error('Området finns inte längre.');latest={name:row.name};
    }
    session.acknowledgeReview(scope,FORM);
-   change({...editor,context:fresh.context,revision:fresh.revision,latest,summary:'Jämför dina ändringar med senast sparade uppgifter och bekräfta igen.'});resource.reload();
+   change({...editor,context:fresh.context,revision:fresh.revision,latest,summary:'Jämför dina ändringar med senast sparade uppgifter och bekräfta igen.'});resource.replace(fresh);
   }catch(e){if(current())setError(message(e));}finally{if(current())setBusy(false);}
  }
- function go(next:Page){setPage(next);setPlantId(null);setTaskId(null);setEditor(null);setError('');setNotice('');}
+ function go(next:Page){setPage(next);setPlantId(null);setTaskId(null);setEditor(null);setReplacement(null);setError('');setNotice('');}
  if(!data)return <Screen title="Din trädgård" back={()=>{session.selectGarden(null);router.replace('/');}}>{resource.loading&&<Loading/>}<ErrorPanel error={resource.error} retry={resource.reload}/></Screen>;
  if(data.protocol!=='workspace-1')return <Screen title="Din trädgård"><Text style={styles.text}>Servern behöver uppdateras för den nya appen.</Text></Screen>;
  const tasks=data.occurrences;
@@ -99,7 +119,8 @@ export function WorkspaceScreen(){
  return <Screen title={data.profile.garden_name||'Min trädgård'} back={()=>{session.selectGarden(null);router.replace('/');}}>
  <View style={styles.row}>{(['home','plants','year','shopping','settings'] as Page[]).map(value=><Button key={value} title={names[value]} secondary={page!==value} onPress={()=>go(value)}/>)}</View>
  <ErrorPanel error={resource.error} retry={resource.reload}/>{!!notice&&<Text accessibilityLiveRegion="polite" style={styles.text}>{notice}</Text>}
- {!editor&&!confirmed&&!!session.draft(scope,FORM).editor&&<Button title="Fortsätt med utkastet" secondary onPress={()=>setEditor(JSON.parse(session.draft(scope,FORM).editor))}/>}
+ {replacement&&<View style={styles.card}><Text accessibilityRole="alert" style={styles.text}>Du har ett osparat utkast. Vill du fortsätta med det eller kasta det för att öppna {replacement.title}?</Text><Button title="Fortsätt med befintligt utkast" onPress={resumeDraft}/><Button title="Kasta utkastet och öppna nytt" secondary onPress={()=>void openEditor(replacement)}/><Button title="Behåll utkastet och stanna här" secondary onPress={()=>setReplacement(null)}/></View>}
+ {!editor&&!replacement&&!confirmed&&!!session.draft(scope,FORM).editor&&<Button title="Fortsätt med utkastet" secondary onPress={resumeDraft}/>}
  {!editor&&!!error&&<Text accessibilityRole="alert" style={styles.text}>{error}</Text>}
  {editor&&!confirmed?<Editor edit={editor} change={change} save={()=>void save()} close={()=>setEditor(null)} locked={session.locked(scope,FORM)} busy={busy} error={error} review={!!session.outcome(scope,FORM)?.reviewRequired} rebase={()=>void rebase()} reconcile={()=>void reconcile()}/>:
  task?<><Button title="Tillbaka till listan" secondary onPress={()=>setTaskId(null)}/><Text style={styles.title}>{task.title}</Text><Text style={styles.muted}>{task.item.name} · {task.start}–{task.end} · {statusLabel[task.status]}</Text><Text style={styles.text}>{task.instructions}</Text><Text style={styles.text}>{task.note}</Text><Sources urls={task.sources}/><Button title="Redigera uppgift" secondary onPress={()=>void begin(taskEdit(data,task))}/>{task.status!=='archived'&&<View style={styles.row}>{task.status==='pending'?<><Button title="Markera klar" onPress={()=>action('task.update',task.id,{status:'completed'},'Markera uppgiften klar',task.title)}/><Button title="Hoppa över" secondary onPress={()=>action('task.update',task.id,{status:'skipped'},'Hoppa över uppgiften',task.title)}/></>:<Button title="Återöppna" secondary onPress={()=>action('task.update',task.id,{status:'pending'},'Återöppna uppgift',task.title)}/>}</View>}{!!task.archive_reason&&<Text style={styles.muted}>{task.archive_reason}</Text>}</>:
@@ -117,17 +138,20 @@ export function WorkspaceScreen(){
  {page==='year'&&<><Text style={styles.title}>Årshjulet</Text><View style={styles.row}><Button title="Föregående år" secondary disabled={year<=1900} onPress={()=>setYear(y=>y-1)}/><Text style={styles.label}>{year}</Text><Button title="Nästa år" secondary disabled={year>=9999} onPress={()=>setYear(y=>y+1)}/></View><View style={styles.row}>{months.map((name,i)=><Button key={name} title={`${name} · ${yearPending.filter(t=>inMonth(t,year,i+1)).length}`} secondary={month!==i+1} onPress={()=>setMonth(i+1)}/>)}</View><Text style={styles.label}>{months[month-1]} {year}</Text>{tasks.filter(t=>inMonth(t,year,month)).map(taskCard)}{!tasks.some(t=>inMonth(t,year,month))&&<Text style={styles.muted}>Inga hämtade uppgifter för den här månaden.</Text>}</>}
  {page==='history'&&<><Text style={styles.title}>Historik</Text>{data.history.map(taskCard)}{!data.history.length&&<Text style={styles.muted}>Ingen historik ännu.</Text>}</>}
  {page==='shopping'&&<Shopping key={localScopeKey(scope)} storageKey={`garden-shopping:${localScopeKey(scope)}`}/>}
- {page==='review'&&<><Text style={styles.title}>Skötselförslag</Text>{data.proposals.length?data.proposals.map(plan=><Review key={`${plan.id}:${data.revision}`} plan={plan} editRule={rule=>void begin(ruleEdit(data,rule))} approve={(rule_ids,resolutions)=>action('proposal.approve',plan.proposal_id,{rule_ids,comparison_token:plan.comparison?.token,resolutions},'Godkänn valda råd',`${rule_ids.length} råd blir din nya plan. Tidigare historik bevaras.`)} reject={()=>action('proposal.reject',plan.proposal_id,{},'Avvisa skötselförslaget',plan.summary)}/>):<Text style={styles.muted}>Inga förslag väntar på granskning.</Text>}</>}
+ {page==='review'&&<><Text style={styles.title}>Skötselförslag</Text>{data.proposals.length?data.proposals.map(plan=>{
+  const fingerprint=JSON.stringify([data.context,data.revision,plan.comparison?.token]),previous=reviews[plan.id];
+  const draft=previous?.fingerprint===fingerprint?previous:reviewDraft(plan,fingerprint);
+  return <Review key={plan.id} plan={plan} draft={draft} changed={!!previous&&previous.fingerprint!==fingerprint} change={value=>setReviews(old=>({...old,[plan.id]:value}))} editRule={rule=>void begin(ruleEdit(data,rule))} approve={(rule_ids,resolutions)=>action('proposal.approve',plan.proposal_id,{rule_ids,comparison_token:plan.comparison?.token,resolutions},'Godkänn valda råd',`${rule_ids.length} råd blir din nya plan. Tidigare historik bevaras.`)} reject={()=>action('proposal.reject',plan.proposal_id,{},'Avvisa skötselförslaget',plan.summary)}/>;
+ }):<Text style={styles.muted}>Inga förslag väntar på granskning.</Text>}</>}
  {page==='settings'&&<><Text style={styles.title}>På dina villkor</Text><View style={styles.card}><Text style={styles.label}>{data.profile.garden_name}</Text><Text style={styles.text}>{[data.profile.city,data.profile.cultivation_zone,data.profile.exposure].filter(Boolean).join(' · ')}</Text><Button title="Redigera profil och tider" secondary onPress={profileEditor}/></View><View style={styles.card}><Text style={styles.label}>Påminnelser</Text><Text style={styles.muted}>Notiser innehåller en allmän påminnelse. Öppna appen för detaljer.</Text><Button title="Aktivera eller ändra påminnelser" disabled={busy||!data.capabilities.native_push} onPress={()=>void notifications(true)}/><Button title="Stäng av på den här enheten" secondary disabled={busy} onPress={()=>void notifications(false)}/>{!data.capabilities.native_push&&<Text style={styles.muted}>Mobilnotiser blir tillgängliga när servern och installationen är aktiverade.</Text>}</View><Button title="Granska skötselförslag" secondary onPress={()=>go('review')}/><Button title="Kontrollera väntande sparningar" secondary onPress={()=>router.push({pathname:'/recovery',params:{form:FORM}})}/><Button title="Konto och utloggning" secondary onPress={()=>{session.selectGarden(null);router.replace('/');}}/></>}
  <Button title="Uppdatera från trädgården" secondary onPress={resource.reload}/>
  </>}
  </Screen>;
 }
 
-function Review({plan,editRule,approve,reject}:{plan:Plan;editRule:(r:Rule)=>void;approve:(ids:string[],resolutions:Record<string,string>)=>void;reject:()=>void}){
- const [selected,setSelected]=useState(()=>plan.comparison?.rows.filter(r=>r.preselected&&!r.error).map(r=>r.rule_id)??[]);
- const [resolutions,setResolutions]=useState<Record<string,string>>({});
- return <View style={styles.card}><Text style={styles.label}>{plan.rules[0]?.item.name||'Skötselplan'}</Text><Text style={styles.text}>{plan.summary}</Text>{[...plan.warnings,...plan.uncertainties].map((text,i)=><Text key={i} style={styles.muted}>{text}</Text>)}{plan.comparison?.context_changed&&<Text style={styles.text}>Underlaget har ändrats sedan analysen. Jämförelsen använder dagens uppgifter.</Text>}
- {plan.rules.map(rule=>{const row=plan.comparison?.rows.find(r=>r.rule_id===rule.id);return <View key={rule.id} style={styles.card}><Text style={styles.label}>{rule.title} · {rule.scope}</Text><Text style={styles.muted}>{({new:'Nytt',changed:'Ändrat',unchanged:'Oförändrat',removed:'Tas bort'} as Record<string,string>)[row?.change??'']||''}</Text><RuleTiming rule={rule}/><Text style={styles.text}>{rule.instructions}</Text><Text style={styles.muted}>{rule.relevance_reason}</Text><Sources urls={rule.source_urls}/>{!!row?.error&&<Text style={styles.text}>{row.error}</Text>}{!!row?.history_count&&<Text style={styles.muted}>{row.history_count} historiska tillfällen bevaras.</Text>}{(!!row?.conflicts.length||!!rule.identity_source_id)&&<><Text style={styles.text}>Möjligt överlapp: {row?.conflicts.map(c=>`${c.title} · ${c.scope}`).join(', ')}</Text><Field label="Förklara överlapp eller koppling till tidigare arbete" multiline value={resolutions[rule.id]||''} onChange={value=>setResolutions({...resolutions,[rule.id]:value})}/></>}<View style={styles.row}><Button title={selected.includes(rule.id)?'✓ Valt råd':'Välj råd'} secondary={!selected.includes(rule.id)} disabled={!!row?.error} onPress={()=>setSelected(old=>old.includes(rule.id)?old.filter(id=>id!==rule.id):[...old,rule.id])}/><Button title="Redigera" secondary onPress={()=>editRule(rule)}/></View></View>;})}
+function Review({plan,draft,changed,change,editRule,approve,reject}:{plan:Plan;draft:ReviewDraft;changed:boolean;change:(value:ReviewDraft)=>void;editRule:(r:Rule)=>void;approve:(ids:string[],resolutions:Record<string,string>)=>void;reject:()=>void}){
+ const {selected,resolutions}=draft;
+ return <View style={styles.card}><Text style={styles.label}>{plan.rules[0]?.item.name||'Skötselplan'}</Text><Text style={styles.text}>{plan.summary}</Text>{changed&&<Text style={styles.text}>Underlaget har ändrats. Dina tidigare rådval och förklaringar behöver granskas på nytt.</Text>}{[...plan.warnings,...plan.uncertainties].map((text,i)=><Text key={i} style={styles.muted}>{text}</Text>)}{plan.comparison?.context_changed&&<Text style={styles.text}>Underlaget har ändrats sedan analysen. Jämförelsen använder dagens uppgifter.</Text>}
+ {plan.rules.map(rule=>{const row=plan.comparison?.rows.find(r=>r.rule_id===rule.id);return <View key={rule.id} style={styles.card}><Text style={styles.label}>{rule.title} · {rule.scope}</Text><Text style={styles.muted}>{({new:'Nytt',changed:'Ändrat',unchanged:'Oförändrat',removed:'Tas bort'} as Record<string,string>)[row?.change??'']||''}</Text><RuleTiming rule={rule}/><Text style={styles.text}>{rule.instructions}</Text><Text style={styles.muted}>{rule.relevance_reason}</Text><Sources urls={rule.source_urls}/>{!!row?.error&&<Text style={styles.text}>{row.error}</Text>}{!!row?.history_count&&<Text style={styles.muted}>{row.history_count} historiska tillfällen bevaras.</Text>}{(!!row?.conflicts.length||!!rule.identity_source_id)&&<><Text style={styles.text}>Möjligt överlapp: {row?.conflicts.map(c=>`${c.title} · ${c.scope}`).join(', ')}</Text><Field label="Förklara överlapp eller koppling till tidigare arbete" multiline value={resolutions[rule.id]||''} onChange={value=>change({...draft,resolutions:{...resolutions,[rule.id]:value}})}/></>}<View style={styles.row}><Button title={selected.includes(rule.id)?'✓ Valt råd':'Välj råd'} secondary={!selected.includes(rule.id)} disabled={!!row?.error} onPress={()=>change({...draft,selected:selected.includes(rule.id)?selected.filter(id=>id!==rule.id):[...selected,rule.id]})}/><Button title="Redigera" secondary onPress={()=>editRule(rule)}/></View></View>;})}
  {plan.comparison?.removed.map((r,i)=><Text key={i} style={styles.muted}>Tas bort: {r.title} · {r.scope}. Historiken bevaras.</Text>)}<Sources urls={plan.sources.map(s=>s.url)}/><Button title="Godkänn valda råd" onPress={()=>approve(selected,resolutions)}/><Button title="Avvisa förslaget" secondary onPress={reject}/></View>;
 }

@@ -22,7 +22,9 @@ export default function Home() {
   const [password, setPassword] = useState("");
   const [busy, setBusy] = useState(!demo);
   const [error, setError] = useState<unknown>();
+  const [retryAction, setRetryAction] = useState<"resume" | "login" | "logout">("resume");
   async function resume() {
+    setRetryAction("resume");
     setBusy(true);
     setError(undefined);
     try {
@@ -51,6 +53,7 @@ export default function Home() {
     };
   }, [session]);
   async function login() {
+    setRetryAction("login");
     setBusy(true);
     setError(undefined);
     try {
@@ -70,6 +73,7 @@ export default function Home() {
       return;
     }
     setBusy(true);
+    setRetryAction("logout");
     setError(undefined);
     try {
       await (await import("../core/device-connection")).disconnect(session);
@@ -86,7 +90,7 @@ export default function Home() {
           {session.notice}
         </Text>
       ) : null}
-      <ErrorPanel error={error} retry={resume} />
+      <ErrorPanel error={error} retry={busy ? undefined : retryAction === "login" ? login : retryAction === "logout" ? logout : resume} />
       {!session.account && !demo ? (
         <>
           <Text style={styles.text}>

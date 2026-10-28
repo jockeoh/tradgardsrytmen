@@ -14,7 +14,7 @@ export function Editor({edit,change,save,close,locked,busy,error,review,rebase,r
   {edit.fields.map(field=><View key={field.key} style={{gap:8}}>
    {field.type==='boolean'?<View style={styles.row}><Text style={styles.text}>{field.label}</Text><Switch accessibilityLabel={field.label} disabled={locked||busy} value={edit.values[field.key]===true} onValueChange={v=>set(field.key,v)}/></View>:
    field.options?<><Text style={styles.label}>{field.label}</Text><View style={styles.row}>{field.options.map(option=><Button key={option.value} title={option.label} secondary={String(edit.values[field.key]??'')!==option.value} disabled={locked||busy} onPress={()=>set(field.key,option.value)}/>)}</View></>:
-   <Field label={field.label} multiline={field.multiline||field.type==='lines'} disabled={locked||busy} value={field.type==='lines'?(edit.values[field.key] as string[]??[]).join('\n'):String(edit.values[field.key]??'')} onChange={value=>set(field.key,field.type==='number'?(value===''?'':Number(value)):field.type==='lines'?value.split('\n').filter(Boolean):value)}/>}
+   <Field label={field.label} multiline={field.multiline||field.type==='lines'} disabled={locked||busy} value={field.type==='lines'&&Array.isArray(edit.values[field.key])?(edit.values[field.key] as string[]).join('\n'):String(edit.values[field.key]??'')} onChange={value=>set(field.key,field.type==='number'?(value===''?'':Number(value)):field.type==='lines'?value.split('\n'):value)}/>}
   </View>)}
   {!!error&&<Text accessibilityRole="alert" style={styles.text}>{error}</Text>}
   {review?<><Text style={styles.text}>Underlaget har ändrats. Dina ändringar finns kvar.</Text><Button title="Granska mot senaste underlaget" onPress={rebase}/></>:
