@@ -27,7 +27,7 @@ const state = {
   taskView: ["work", "area"].includes(savedTaskView) ? savedTaskView : "work", taskPeriod: "current",
   searchTimer: null, searchRequest: 0, toastTimer: null, openItem: null,
   selectedMonth: new Date().getMonth() + 1, selectedYear: new Date().getFullYear(),
-  rules: new Map(), settingsDirty: false, reviewDrafts: new Map(), loaded: false, scroll: {},
+  rules: new Map(), settingsDirty: false, reviewDrafts: new Map(), gardenReviewDraft: null, loaded: false, scroll: {},
   plantFilter: "", plantQuery: "", soilShape: "bed",
   shopping: Array.isArray(storedShopping) ? storedShopping.filter(row => row && typeof row.id === "string" && typeof row.name === "string").map(row => ({id: row.id, name: row.name.slice(0, 180), detail: typeof row.detail === "string" ? row.detail.slice(0, 240) : "", done: row.done === true})) : [],
 };
@@ -207,11 +207,62 @@ async function openReview() {
   $("#detail-content").innerHTML = '<p>Hämtar granskningskön …</p>';
   showDialog(dialog);
   try {
-    const {proposals} = await api('/api/proposals/');
+    const {proposals, garden_review} = await api('/api/proposals/');
+    if (garden_review?.choices.some(c => c.members.length > 1)) {
+      $("#detail-content").innerHTML = groupedReviewMarkup(proposals, garden_review);
+      return;
+    }
     $("#detail-content").innerHTML = `<h2 data-review-list>Granska skötsel</h2>${proposals.length ? proposals.map(p=>`<details${proposals.length === 1 ? ' open' : ''}><summary>${escapeHtml(p.item.name)} · ${p.plan.rules.length} råd</summary>${proposalMarkup(p.plan)}</details>`).join('') : emptyState('Inget att ta ställning till just nu.', 'När du hämtar nya skötselråd för en växt kan du granska dem här.', '', 'check')}`;
   } catch (error) {
     $("#detail-content").innerHTML = `<h2>Råden kunde inte hämtas</h2><p>${escapeHtml(error.message)}</p><button class="button secondary" data-review>Försök igen</button>`;
   }
+}
+
+function groupedReviewMarkup(proposals, review) {
+  const rules = new Map();
+  for (const {item, plan} of proposals) {
+    const rows = new Map(plan.comparison.rows.map(row => [row.rule_id, row]));
+    for (const rule of plan.rules) {
+      rules.set(rule.id, {rule, item, row: rows.get(rule.id)});
+      state.rules.set(rule.id, rule);
+    }
+  }
+  if (state.gardenReviewDraft?.token !== review.token) {
+    state.gardenReviewDraft = {token:review.token, selected:new Set(
+      review.choices.filter(c => c.members.some(m => m.eligible)).map(c => c.id))};
+  }
+  function renderChoice(choice) {
+    const count = choice.members.filter(m => m.eligible).length;
+    const first = rules.get(choice.members[0].rule_id);
+    const label = choice.members.length === 1 ? first.item.name : `${new Set(choice.members.map(m=>m.item_id)).size} växtposter`;
+    const details = choice.members.map(member => {
+      const {rule, item, row} = rules.get(member.rule_id);
+      const timing = rule.cadence === 'one_off' ? `${rule.one_off_date}–${rule.one_off_end}` : `${monthName(rule.start_month)}–${monthName(rule.end_month)}`;
+      return `<div class="detail-section"><strong>${escapeHtml([item.name, item.place, rule.scope].filter(Boolean).join(' · '))}</strong>
+        <p>${escapeHtml(rule.instructions)}</p>${rule.need_condition ? `<p>${escapeHtml(rule.need_condition)}</p>` : ''}
+        <small>${escapeHtml(timing)} · ${escapeHtml(rule.relevance_reason)}</small>
+        ${!member.eligible ? `<p class="review-notice">${escapeHtml(row.error || 'Rådet behöver granskas separat på växten.')}</p>` : ''}
+        ${rule.source_urls.map(u=>`<a class="source-link" href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`).join('')}
+        <button class="text-button" data-edit-rule="${rule.id}">Redigera</button></div>`;
+    }).join('');
+    return `<div class="rule-choice"><input type="checkbox" id="choice-${choice.id}" data-garden-choice="${choice.id}" ${count ? '' : 'disabled'} ${state.gardenReviewDraft.selected.has(choice.id) ? 'checked' : ''}>
+      <div><label for="choice-${choice.id}"><strong>${escapeHtml(choice.title)}</strong> · ${escapeHtml(label)}</label>
+      ${count < choice.members.length && count ? `<small>${count} av ${choice.members.length} råd kan godkännas.</small>` : ''}
+      <details><summary>Villkor, instruktioner och källor</summary>${details}</details></div></div>`;
+  }
+  const ready = review.choices.filter(c => c.members.some(m => m.eligible));
+  const blocked = review.choices.filter(c => !c.members.some(m => m.eligible));
+  const notes = proposals.map(({item, plan})=>{
+    const lines = [...plan.warnings, ...plan.uncertainties, ...plan.comparison.removed.map(r=>`Utgår ur planen: ${r.title}`)];
+    return lines.length ? `<h4>${escapeHtml(item.name)}</h4><ul>${lines.map(l=>`<li>${escapeHtml(l)}</li>`).join('')}</ul>` : '';
+  }).join('');
+  return `<h2 data-review-list>Granska skötsel</h2><div data-garden-review="${review.token}">
+    ${ready.map(renderChoice).join('')}
+    ${blocked.length ? `<details><summary>${blocked.length} val kan inte godkännas</summary>${blocked.map(renderChoice).join('')}</details>` : ''}
+    ${notes ? `<details><summary>Varningar och ändringar per växt</summary>${notes}</details>` : ''}
+    <p>Valda råd blir växtens nya plan. Om du väljer bort alla valbara råd för en växt avvisas dess förslag.</p>
+    <button class="button" data-approve-garden ${ready.length ? '' : 'disabled'}>${state.gardenReviewDraft.selected.size ? 'Godkänn valda råd för trädgården' : 'Avvisa valbara förslag'}</button></div>
+    <details><summary>Granska en växt separat</summary>${proposals.map(p=>`<details><summary>${escapeHtml([p.item.name,p.item.place].filter(Boolean).join(' · '))}</summary>${proposalMarkup(p.plan)}</details>`).join('')}</details>`;
 }
 
 function plantRow(item) {
@@ -694,6 +745,16 @@ document.addEventListener("click", async event => {
   const quick=event.target.closest("[data-quick-add]"); if(quick){newItem(quick.dataset.quickAdd);return;}
   const researchButton=event.target.closest("[data-research]"); if(researchButton){research(researchButton.dataset.research,researchButton);return;}
   const editItemButton=event.target.closest("[data-edit-item]"); if(editItemButton && state.openItem){editItem(state.openItem);return;}
+  const gardenButton = event.target.closest('[data-approve-garden]');
+  if (gardenButton) {
+    gardenButton.disabled = true;
+    const review = state.gardenReviewDraft;
+    try {
+      const result = await api('/api/proposals/approve-garden/', {method:'POST', body:JSON.stringify({comparison_token:review.token, choice_ids:[...review.selected]})});
+      toast(`${result.approved} råd godkända för ${result.plants} växtposter. ${result.rejected} förslag avvisade.`); await finishReview();
+    } finally { gardenButton.disabled = false; }
+    return;
+  }
   const approveButton=event.target.closest("[data-approve]"); if(approveButton){approveButton.disabled=true;try {await approve(approveButton.dataset.approve);} finally {approveButton.disabled=false;}return;}
   const editButton=event.target.closest("[data-edit-rule]"); if(editButton){editRule(editButton);return;}
   const reject=event.target.closest("[data-reject]"); if(reject){await api(`/api/proposals/${reject.dataset.reject}/`,{method:"DELETE"});toast("Förslaget avvisades");await finishReview();return;}
@@ -709,6 +770,13 @@ document.addEventListener("click", async event => {
 });
 
 document.addEventListener("change", async event => {
+  const choice = event.target.closest('[data-garden-choice]');
+  if (choice) {
+    const selected = state.gardenReviewDraft.selected;
+    if (choice.checked) selected.add(choice.dataset.gardenChoice); else selected.delete(choice.dataset.gardenChoice);
+    $('[data-approve-garden]').textContent = selected.size ? 'Godkänn valda råd för trädgården' : 'Avvisa valbara förslag';
+    return;
+  }
   const shopping = event.target.closest('[data-shopping-toggle]');
   if (shopping) {changeShopping(rows => rows.map(row => row.id === shopping.dataset.shoppingToggle ? {...row, done: shopping.checked} : row));return;}
   const select=event.target.closest("[data-item-area]");

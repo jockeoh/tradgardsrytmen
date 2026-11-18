@@ -10,6 +10,7 @@ urlpatterns = [
     path("jobs/<uuid:job_id>/", secured(views.api_job)),
     path("bootstrap/", secured(views.api_bootstrap)),
     path("month/", secured(views.api_month)),
+    path("proposals/approve-garden/", secured(views.api_approve_garden_review)),
     path("proposals/", secured(views.api_proposals)),
     path("works/<int:work_id>/need/", secured(views.api_need)),
     path("works/<int:work_id>/", secured(views.api_work)),

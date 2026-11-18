@@ -1,5 +1,6 @@
-from .locking import garden_mutation
+from .locking import garden_mutation, lock_garden
 import json
+from collections import defaultdict
 from django.conf import settings
 from datetime import date
 from django.db import IntegrityError, transaction
@@ -19,6 +20,7 @@ from .research import ResearchError, approve_proposal, create_research_proposal
 from .tasks import dashboard_for, visible_pending, month_end, needs_now, set_excluded
 from .care_contract import validate_rule, CareValidationError, plan_comparison, canonical_scope
 from .work_categories import WORK_CATEGORIES, normalize_work_category
+from .garden_review import garden_review
 
 MONTHS = ["januari", "februari", "mars", "april", "maj", "juni", "juli", "augusti", "september", "oktober", "november", "december"]
 
@@ -406,9 +408,58 @@ def api_rule(request, rule_id):
     return JsonResponse({"ok": True, "rule": _rule_json(rule), "comparison": plan_comparison(rule.plan)})
 
 
+def pending_proposals(garden):
+    proposals = ResearchProposal.objects.filter(item__garden=garden, status="pending").select_related("item__area", "plan").order_by("pk")
+    return [{"item": {"id": p.item_id, "name": p.item.name,
+                      "place": " · ".join(v for v in (p.item.area.name if p.item.area else "", p.item.location) if v)},
+             "plan": _plan_json(p.plan)} for p in proposals]
+
+
 @require_GET
 def api_proposals(request):
-    return JsonResponse({"proposals": [{"item": {"id": p.item_id, "name": p.item.name}, "plan": _plan_json(p.plan)} for p in ResearchProposal.objects.filter(item__garden=request.garden, status="pending").select_related("item", "plan")]})
+    proposals = pending_proposals(request.garden)
+    return JsonResponse({"proposals": proposals, "garden_review": garden_review([p["plan"] for p in proposals])})
+
+
+@require_POST
+def api_approve_garden_review(request):
+    data = _json_body(request) or {}
+    choices = data.get("choice_ids")
+    if not isinstance(choices, list) or any(not isinstance(v, str) for v in choices):
+        return JsonResponse({"error": "Kontrollera de valda råden."}, status=400)
+    try:
+        with transaction.atomic():
+            lock_garden(request.garden.pk)
+            if not GardenMembership.objects.filter(pk=request.garden_membership.pk, garden=request.garden,
+                                                  user=request.user, user__is_active=True).exists():
+                raise ResearchError("Åtkomsten har ändrats. Öppna trädgården igen.")
+            plans = [p["plan"] for p in pending_proposals(request.garden)]
+            review = garden_review(plans)
+            if data.get("comparison_token") != review["token"]:
+                raise ResearchError("Granskningskön har ändrats. Öppna kön igen för aktuella val.")
+            selected = {c["id"]: c for c in review["choices"] if c["id"] in choices}
+            if len(selected) != len(choices) or any(not any(m["eligible"] for m in c["members"]) for c in selected.values()):
+                raise ResearchError("Valet innehåller ett råd som inte kan godkännas.")
+            eligible_plans = {m["proposal_id"] for c in review["choices"] for m in c["members"] if m["eligible"]}
+            rejected = 0
+            by_proposal = defaultdict(list)
+            for choice in selected.values():
+                for member in choice["members"]:
+                    if member["eligible"]:
+                        by_proposal[member["proposal_id"]].append(member["rule_id"])
+            for plan in plans:
+                rule_ids = by_proposal.get(plan["proposal_id"])
+                if rule_ids:
+                    proposal = ResearchProposal.objects.get(item__garden=request.garden, pk=plan["proposal_id"])
+                    approve_proposal(proposal, rule_ids, plan["comparison"]["token"])
+                elif plan["proposal_id"] in eligible_plans:
+                    ResearchProposal.objects.filter(pk=plan["proposal_id"]).update(status="rejected", reviewed_at=timezone.now())
+                    CarePlanVersion.objects.filter(pk=plan["id"]).update(status="rejected", reviewed_at=timezone.now())
+                    rejected += 1
+    except ResearchError as exc:
+        return JsonResponse({"error": str(exc)}, status=409)
+    return JsonResponse({"ok": True, "approved": sum(map(len, by_proposal.values())), "plants": len(by_proposal), "rejected": rejected})
+
 
 
 @require_GET

@@ -90,8 +90,9 @@ def snapshot(request, member):
     base['history'] = [views._task_json(task) for task in
                        TaskOccurrence.objects.filter(item__garden=member.garden).exclude(status='pending')
                        .select_related('item__area', 'work', 'rule').order_by('-updated_at')]
-    base['proposals'] = [views._plan_json(p.plan) for p in
-                         ResearchProposal.objects.filter(item__garden=member.garden, status='pending').select_related('plan')]
+    queue = views.pending_proposals(member.garden)
+    base['proposals'] = [p['plan'] for p in queue]
+    base['garden_review'] = views.garden_review(base['proposals'])
     base['profile'] = unpack(views.api_settings(request))['settings']
     base['jobs'] = [dict(views._job_json(job), item_id=job.item_id) for job in
                     BackgroundJob.objects.filter(garden=member.garden, actor=request.api_user,
@@ -119,6 +120,7 @@ OPERATIONS = {
     'work.need': (views.api_need, 'POST', 'work_id'),
     'work.update': (views.api_work, 'PATCH', 'work_id'),
     'rule.update': (views.api_rule, 'PATCH', 'rule_id'),
+    'proposal.approve_garden': (views.api_approve_garden_review, 'POST', None),
     'proposal.approve': (views.api_approve_proposal, 'POST', 'proposal_id'),
     'proposal.reject': (views.api_proposal, 'DELETE', 'proposal_id'),
     'profile.update': (views.api_settings, 'PATCH', None),
@@ -135,6 +137,7 @@ ALLOWED = {
     'task.update': {'title', 'instructions', 'note', 'status', 'category'},
     'area.create': {'name'}, 'area.update': {'name'}, 'area.delete': set(),
     'work.need': set(), 'work.update': {'excluded'}, 'rule.update': RULE_FIELDS,
+    'proposal.approve_garden': {'choice_ids', 'comparison_token'},
     'proposal.approve': {'rule_ids', 'comparison_token', 'resolutions'}, 'proposal.reject': set(),
     'profile.update': {'garden_name', 'city', 'cultivation_zone', 'exposure',
                        'monthly_digest_day', 'reminder_weekday', 'reminder_hour'},
@@ -161,7 +164,7 @@ def validate(command, values):
             if key == 'area_id' and value in ('', None): data[key] = None
             elif not isinstance(value, str) or not value.isdecimal() or int(value) < 1: raise ValueError('Ogiltig referens.')
             else: data[key] = int(value)
-        elif key in {'aliases', 'source_urls', 'rule_ids'}:
+        elif key in {'aliases', 'source_urls', 'rule_ids', 'choice_ids'}:
             if not isinstance(value, list) or len(value) > 200 or any(not isinstance(x, str) or len(x)>2000 for x in value):
                 raise ValueError('Kontrollera listan.')
             if key == 'rule_ids' and any(not x.isdecimal() for x in value): raise ValueError('Ogiltigt råd.')

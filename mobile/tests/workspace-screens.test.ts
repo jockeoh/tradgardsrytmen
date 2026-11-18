@@ -193,3 +193,23 @@ test('F04 a proposal removed during conflict recovery cannot be approved again',
   assert.equal(root.root.findAll(n=>n.type==='button'&&n.props.accessibilityLabel==='Godkänn valda råd').length,0);assert.equal(calls.length,1);
  }finally{await act(async()=>root.unmount());}
 });
+
+test('one garden choice submits eligible advice for multiple plants',async()=>{
+ const data=base(), calls:Request[]=[];
+ const first=pendingPlan(careRule('1','Vattna vid torka'));
+ const second=pendingPlan(careRule('2','Vattna när jorden torkar'));
+ second.id='2';second.proposal_id='2';second.rules[0].item={id:'2',name:'Hallon'};
+ data.proposals=[first,second];
+ data.garden_review={token:'queue-token',choices:[{id:'1',title:'Vattna vid torka',
+   members:[{rule_id:'1',item_id:'1',proposal_id:'1',eligible:true},{rule_id:'2',item_id:'2',proposal_id:'2',eligible:true}]}]};
+ await mount(data,r=>{calls.push(r);return {ok:true};});
+ try{
+  await press('Skötselförslag (2)');
+  assert.equal(root.root.findAll(n=>n.type==='button'&&n.props.accessibilityLabel==='✓ Valt råd').length,1);
+  await press('Villkor, instruktioner och källor');
+  assert.match(text(),/Hallon/);
+  await press('Godkänn valda råd för trädgården');await press('Bekräfta och spara');
+  assert.equal(calls[0].body!.command,'proposal.approve_garden');
+  assert.deepEqual(calls[0].body!.values,{choice_ids:['1'],comparison_token:'queue-token'});
+ }finally{await act(async()=>root.unmount());}
+});

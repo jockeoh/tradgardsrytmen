@@ -4,7 +4,7 @@ import { router } from 'expo-router';
 import { Button, ErrorPanel, Field, Loading, Screen, styles, useResource } from '../ui/common';
 import { useSession } from '../core/runtime';
 import { gardenPath } from '../api/contract';
-import { Edit, Plan, Plant, Rule, Task, Workspace } from './types';
+import { Edit, GardenReview, Plan, Plant, Rule, Task, Workspace } from './types';
 import { editBody, editFor, inMonth, months, plantEdit, ruleEdit, statusLabel, taskEdit } from './domain';
 import { Editor } from './Editor';
 import { Shopping } from './Shopping';
@@ -35,6 +35,8 @@ export function WorkspaceScreen(){
  const [editor,setEditor]=useState<Edit|null>(()=>{try{const raw=session.draft(scope,FORM).editor;return raw&&!session.outcome(scope,FORM)?.result?JSON.parse(raw):null;}catch{return null;}});
  const [error,setError]=useState(''),[notice,setNotice]=useState(''),[busy,setBusy]=useState(false);
  const [replacement,setReplacement]=useState<Edit|null>(null);
+ const [individualReview,setIndividualReview]=useState(false);
+ const [gardenSelection,setGardenSelection]=useState<{token:string;ids:string[]}|null>(null);
  const [reviews,setReviews]=useState<Record<string,ReviewDraft>>({});
  const mounted=useRef(true),saving=useRef(false);
  useEffect(()=>{mounted.current=true;return()=>{mounted.current=false;};},[]);
@@ -138,7 +140,12 @@ export function WorkspaceScreen(){
  {page==='year'&&<><Text style={styles.title}>Årshjulet</Text><View style={styles.row}><Button title="Föregående år" secondary disabled={year<=1900} onPress={()=>setYear(y=>y-1)}/><Text style={styles.label}>{year}</Text><Button title="Nästa år" secondary disabled={year>=9999} onPress={()=>setYear(y=>y+1)}/></View><View style={styles.row}>{months.map((name,i)=><Button key={name} title={`${name} · ${yearPending.filter(t=>inMonth(t,year,i+1)).length}`} secondary={month!==i+1} onPress={()=>setMonth(i+1)}/>)}</View><Text style={styles.label}>{months[month-1]} {year}</Text>{tasks.filter(t=>inMonth(t,year,month)).map(taskCard)}{!tasks.some(t=>inMonth(t,year,month))&&<Text style={styles.muted}>Inga hämtade uppgifter för den här månaden.</Text>}</>}
  {page==='history'&&<><Text style={styles.title}>Historik</Text>{data.history.map(taskCard)}{!data.history.length&&<Text style={styles.muted}>Ingen historik ännu.</Text>}</>}
  {page==='shopping'&&<Shopping key={localScopeKey(scope)} storageKey={`garden-shopping:${localScopeKey(scope)}`}/>}
- {page==='review'&&<><Text style={styles.title}>Skötselförslag</Text>{data.proposals.length?data.proposals.map(plan=>{
+ {page==='review'&&<><Text style={styles.title}>Skötselförslag</Text>{data.garden_review?.choices.some(c=>c.members.length>1)&&<Button title={individualReview?'Visa gemensamma råd':'Granska en växt separat'} secondary onPress={()=>setIndividualReview(!individualReview)}/>}
+ {!individualReview&&data.garden_review?.choices.some(c=>c.members.length>1)?
+ <GardenChoices key={data.garden_review.token} review={data.garden_review} data={data} selection={gardenSelection?.token===data.garden_review.token?gardenSelection.ids:undefined}
+   change={ids=>setGardenSelection({token:data.garden_review!.token,ids})} edit={rule=>void begin(ruleEdit(data,rule))}
+   approve={ids=>action('proposal.approve_garden',null,{choice_ids:ids,comparison_token:data.garden_review!.token},'Godkänn valda råd för trädgården','Valda råd blir växtens nya plan. Om du väljer bort alla valbara råd för en växt avvisas dess förslag.')}/>
+ :data.proposals.length?data.proposals.map(plan=>{
   // The signed context renews on reads; only domain or membership changes reset a review.
   const fingerprint=JSON.stringify([scope.account,data.garden_id,data.membership,data.revision,plan.comparison?.token]),previous=reviews[plan.id];
   const draft=previous?.fingerprint===fingerprint?previous:reviewDraft(plan,fingerprint);
@@ -148,6 +155,42 @@ export function WorkspaceScreen(){
  <Button title="Uppdatera från trädgården" secondary onPress={resource.reload}/>
  </>}
  </Screen>;
+}
+
+function GardenChoices({review,data,selection,change,edit,approve}:{
+ review:GardenReview;data:Workspace;selection?:string[];change:(ids:string[])=>void;edit:(rule:Rule)=>void;approve:(ids:string[])=>void;
+}){
+ const [expanded,setExpanded]=useState<string|null>(null);
+ const [showBlocked,setShowBlocked]=useState(false);
+ const [showNotes,setShowNotes]=useState(false);
+ const rules=new Map(data.proposals.flatMap(plan=>plan.rules.map(rule=>[rule.id,rule] as const)));
+ const rows=new Map(data.proposals.flatMap(plan=>(plan.comparison?.rows??[]).map(row=>[row.rule_id,row] as const)));
+ const plants=new Map(data.items.map(p=>[p.id,p]));
+ const ready=review.choices.filter(c=>c.members.some(m=>m.eligible));
+ const blocked=review.choices.filter(c=>!c.members.some(m=>m.eligible));
+ const selected=selection??ready.map(c=>c.id);
+ const notes=data.proposals.flatMap(p=>[...p.warnings,...p.uncertainties,...(p.comparison?.removed??[]).map(r=>`Utgår ur planen: ${r.title}`)].map(t=>`${p.rules[0]?.item.name??''} · ${t}`));
+ function card(c:GardenReview['choices'][number]){
+  const eligible=c.members.filter(m=>m.eligible).length;
+  const count=new Set(c.members.map(m=>m.item_id)).size;
+  const where=count===1?plants.get(c.members[0].item_id)?.name:`${count} växtposter`;
+  return <View key={c.id} style={styles.card}><Text style={styles.label}>{c.title} · {where}</Text>
+   {eligible>0&&<Button title={selected.includes(c.id)?'✓ Valt råd':'Välj råd'} secondary={!selected.includes(c.id)}
+    onPress={()=>change(selected.includes(c.id)?selected.filter(id=>id!==c.id):[...selected,c.id])}/>}
+   {eligible<c.members.length&&<Text style={styles.muted}>{eligible} av {c.members.length} råd kan godkännas.</Text>}
+   <Button title={expanded===c.id?'Dölj detaljer':'Villkor, instruktioner och källor'} secondary onPress={()=>setExpanded(expanded===c.id?null:c.id)}/>
+   {expanded===c.id&&c.members.map(m=>{const r=rules.get(m.rule_id);if(!r)return null;const p=plants.get(m.item_id);
+    return <View key={r.id}><Text style={styles.label}>{[r.item.name,data.areas.find(area=>area.id===p?.area_id)?.name,p?.location_detail,r.scope].filter(Boolean).join(' · ')}</Text>
+     <RuleTiming rule={r}/><Text style={styles.text}>{r.instructions}</Text><Sources urls={r.source_urls}/>
+     {!m.eligible&&<Text style={styles.muted}>{rows.get(r.id)?.error||'Rådet behöver granskas separat på växten.'}</Text>}
+     <Button title="Redigera" secondary onPress={()=>edit(r)}/></View>;})}</View>;
+ }
+ return <>{ready.map(card)}
+  {blocked.length>0&&<Button title={`${blocked.length} val kan inte godkännas`} secondary onPress={()=>setShowBlocked(!showBlocked)}/>}
+  {showBlocked&&blocked.map(card)}
+  {notes.length>0&&<Button title="Varningar och ändringar per växt" secondary onPress={()=>setShowNotes(!showNotes)}/>}
+  {showNotes&&notes.map((t,i)=><Text key={i} style={styles.muted}>{t}</Text>)}
+  <Button title={selected.length?'Godkänn valda råd för trädgården':'Avvisa valbara förslag'} disabled={!ready.length} onPress={()=>approve(selected)}/></>;
 }
 
 function Review({plan,draft,changed,change,editRule,approve,reject}:{plan:Plan;draft:ReviewDraft;changed:boolean;change:(value:ReviewDraft)=>void;editRule:(r:Rule)=>void;approve:(ids:string[],resolutions:Record<string,string>)=>void;reject:()=>void}){
