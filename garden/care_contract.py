@@ -98,36 +98,64 @@ def care_context(item):
         'garden': {f: getattr(garden, f) for f in ['city', 'cultivation_zone', 'exposure']},
         'works': list(item.works.filter(merged_into=None).order_by('pk').values('id', 'action_key', 'scope', 'excluded_at')),
         'active_rules': [dict(id=r.pk, **rule_content(r)) for r in item.care_rules.filter(active=True).order_by('pk')],
-        'history': list(item.tasks.order_by('pk').values('id', 'work_id', 'title', 'instructions', 'status', 'window_start', 'window_end', 'completed_at', 'skipped_at', 'note', 'archive_reason', 'updated_at')),
+        'history': list(item.tasks.order_by('pk').values('id', 'work_id', 'manual', 'title', 'instructions', 'status', 'window_start', 'window_end', 'completed_at', 'skipped_at', 'note', 'archive_reason', 'updated_at')),
     }
 
 
+def disjoint_scopes(left, right):
+    scopes = {canonical_scope(left), canonical_scope(right)}
+    return scopes == {'sommarhallon', 'hösthallon'} or (
+        any(s.startswith(('unga ', 'ungt ')) for s in scopes)
+        and any(s.startswith(('gamla ', 'gammalt ', 'äldre ')) for s in scopes))
+
+
+def watering_action(rule):
+    title = normalized(rule.title)
+    return rule.category == 'Vattna' or bool(re.search(
+        r'\b(markfukt\w*|jordfukt\w*|bevattningsbehov\w*|vattningsbehov\w*)\b|\bfukt\w* i jorden\b', title))
+
+
 def overlaps(a, b):
-    """Conservative candidate detection only; never infer a semantic merge."""
-    if a.work_id == b.work_id:
+    if a.work_id and a.work_id == b.work_id:
         return True
-    if a.work and b.work and a.work.scope != b.work.scope:
-        # An unspecified/all scope may include a named subgroup.
-        scopes = {canonical_scope(a.work.scope), canonical_scope(b.work.scope)}
-        if scopes == {'sommarhallon', 'hösthallon'} or (any(s.startswith(('unga ', 'ungt ')) for s in scopes) and any(s.startswith(('gamla ', 'gammalt ', 'äldre ')) for s in scopes)):
+    if a.work and b.work:
+        if disjoint_scopes(a.work.scope, b.work.scope):
             return False
-    words_a, words_b = set(normalized(a.instructions).split()), set(normalized(b.instructions).split())
-    common = len(words_a & words_b) / max(1, min(len(words_a), len(words_b)))
-    # Same-category work is reviewed conservatively, including inspection/action
-    # split across different categories when instructions share the action.
-    return a.category == b.category or common >= .55
+        if a.work.action_key == b.work.action_key:
+            return True
+    # A soil-moisture check and the resulting watering are a single visit.
+    # Do not group unrelated actions just because they share a UI category.
+    if watering_action(a) and watering_action(b):
+        return True
+    if normalized(a.title) == normalized(b.title):
+        return True
+    # An instruction can contain the complete action from another rule, even
+    # when one is filed as an inspection and the other as pruning or watering.
+    left, right = normalized(a.instructions), normalized(b.instructions)
+    if left and left == right:
+        return True
+    stopwords = {'med', 'för', 'att', 'som', 'och', 'den', 'det', 'när', 'vid', 'till', 'från', 'eller'}
+    words_a = set(left.split()) - stopwords
+    words_b = set(right.split()) - stopwords
+    common = len(words_a & words_b)
+    return common >= 4 and common >= .8 * min(len(words_a), len(words_b))
 
 
-def plan_comparison(plan):
-    proposed = list(plan.rules.select_related('work').order_by('pk'))
-    existing = list(plan.item.care_rules.filter(active=True).exclude(plan=plan).select_related('work').order_by('pk'))
+def comparison_peers(plan):
     from django.db.models import Q
+    existing = list(plan.item.care_rules.filter(active=True).exclude(plan=plan).select_related('work').order_by('pk'))
     historical = []
     known_works = {r.work_id for r in existing}
     for old in plan.item.care_rules.exclude(plan=plan).filter(Q(occurrences__isnull=False) | Q(work__excluded_at__isnull=False)).select_related('work').order_by('-pk').distinct():
         if old.work_id not in known_works:
             historical.append(old)
             known_works.add(old.work_id)
+    return existing, historical
+
+
+def plan_comparison(plan):
+    proposed = list(plan.rules.select_related('work').order_by('pk'))
+    existing, historical = comparison_peers(plan)
     context = care_context(plan.item)
     token = digest({'context': context, 'rules': [dict(id=r.pk, **rule_content(r)) for r in proposed]})
     rows = []
@@ -139,14 +167,14 @@ def plan_comparison(plan):
             if other.pk == rule.pk or (other in existing + historical and other.work_id == rule.work_id):
                 continue
             if overlaps(rule, other):
-                conflicts.append({'rule_id': other.pk, 'title': other.title, 'scope': other.work.scope if other.work else 'okänd', 'proposed': other in proposed, 'same_work': rule.work_id == other.work_id, 'historical': other in historical})
+                conflicts.append({'rule_id': other.pk, 'work_id': other.work_id, 'title': other.title, 'scope': other.work.scope if other.work else 'okänd', 'proposed': other in proposed, 'same_work': rule.work_id == other.work_id, 'historical': other in historical})
         error = ''
         try:
             validate_rule(rule, activation=True)
         except CareValidationError as exc:
             error = str(exc)
         rows.append({'rule_id': rule.pk, 'change': change, 'conflicts': conflicts, 'error': error,
-                     'preselected': rule.advice_kind == 'planned' and not conflicts and not error,
+                     'preselected': not conflicts and not error,
                      'history_count': sum(1 for t in context['history'] if t['work_id'] == rule.work_id and t['status'] in {'completed','skipped'}),
                      'reason': rule.relevance_reason, 'existing_rule_ids': [r.pk for r in matches]})
     removed = [{'rule_id': r.pk, 'title': r.title, 'work_id': r.work_id, 'scope': r.work.scope if r.work else 'okänd', 'change': 'removed'} for r in existing if not (r.work and r.work.excluded_at) and not any(p.work_id == r.work_id for p in proposed)]

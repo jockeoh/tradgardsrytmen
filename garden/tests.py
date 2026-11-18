@@ -109,6 +109,49 @@ class ProposalTests(TenantTestCase):
         self.assertFalse(rule.active)
         self.assertEqual(TaskOccurrence.objects.count(), 0)
 
+    def test_import_filters_duplicates_and_reuses_the_active_identity(self):
+        old = create_research_proposal(self.item, self.garden, self.response())
+        first = old.plan.rules.get()
+        approve_proposal(old, [first.pk], plan_comparison(old.plan)["token"])
+        response = self.response()
+        message = response["output"][1]["content"][0]
+        result = json.loads(message["text"])
+        task = result["tasks"][0]
+        task["action_key"] = "ny-rubrik-samma-arbete"
+        result["tasks"].append(dict(task, action_key="inspektera-skott", title="Inspektera gamla skott", category="Kontrollera"))
+        message["text"] = json.dumps(result)
+        new = create_research_proposal(self.item, self.garden, response)
+        only = new.plan.rules.get()
+        self.assertEqual(only.work_id, first.work_id)
+        self.assertEqual(self.item.works.count(), 1)
+        self.assertEqual(plan_comparison(new.plan)["rows"][0]["conflicts"], [])
+
+    @override_settings(RESEARCH_CODEX_BIN="synthetic")
+    def test_independent_review_can_only_select_original_evidence(self):
+        from .research import call_openai
+        from unittest.mock import Mock
+        original = self.response()
+        message = original["output"][1]["content"][0]
+        result = json.loads(message["text"])
+        result["tasks"].append(dict(result["tasks"][0], title="Städa hallonraden", action_key="stada"))
+        message["text"] = json.dumps(result)
+        selection = {"output": [{"type": "message", "content": [{"type": "output_text",
+            "text": json.dumps({"keep": [{"index": 0, "work_id": None}]})}]}]}
+        auth = Mock()
+        with patch("garden.research.codex_research.execute", side_effect=[json.dumps(original), json.dumps(selection)]) as model:
+            reviewed = call_openai(self.item, self.garden, before_send=auth)
+        self.assertEqual(auth.call_count, 2)
+        self.assertEqual(model.call_args.args[0]["tools"], [])
+        plan = create_research_proposal(self.item, self.garden, reviewed).plan
+        self.assertEqual(plan.rules.get().title, "Gallra skott")
+        self.assertEqual(plan.rules.get().source_urls, [plan.sources.get().url])
+        # A malformed second pass never supersedes a pending proposal.
+        selection["output"][0]["content"][0]["text"] = '{"keep":[{"index":17,"work_id":null}]}'
+        with patch("garden.research.codex_research.execute", side_effect=[json.dumps(original), json.dumps(selection)]):
+            with self.assertRaisesRegex(ResearchError, "ogiltigt råd"):
+                call_openai(self.item, self.garden)
+        self.assertTrue(self.item.proposals.filter(status="pending", plan=plan).exists())
+
     def test_unconsulted_url_cannot_be_approved(self):
         proposal = create_research_proposal(self.item, self.garden, self.response(["https://example.com/fake"]))
         rule = proposal.plan.rules.get()

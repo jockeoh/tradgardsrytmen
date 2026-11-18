@@ -9,7 +9,7 @@ from django.db import transaction
 from django.db.models import Max, F, Q
 from django.utils import timezone
 from .models import CarePlanVersion, CareRule, ResearchProposal, SourceReference, WorkIdentity, GardenItem, TaskOccurrence
-from .care_contract import CareValidationError, validate_rule, care_context, plan_comparison, canonical_scope
+from .care_contract import CareValidationError, validate_rule, care_context, plan_comparison, canonical_scope, comparison_peers, overlaps, disjoint_scopes
 from .work_categories import WORK_CATEGORIES, normalize_work_category, suggested_work_category
 
 ALLOWED_DOMAINS = ["svensktradgard.se", "slu.se", "for.se", "jordbruksverket.se", "rhs.org.uk"]
@@ -139,6 +139,7 @@ Trädgården ligger i {garden.city}, odlingszon {garden.cultivation_zone}, {gard
 Egen trädgårdsanteckning: {item.notes or 'Ingen anteckning angiven'}
 Behandla anteckningen som en lokal observation, inte som en bekräftad diagnos. När den är relevant får du föreslå en försiktig, villkorad uppgift för kontroll, bedömning eller åtgärd. Sätt tydliga osäkerheter och föreslå inte åtgärder som förutsätter att en orsak är fastställd.
 Använd exakt en av dessa arbetskategorier: {', '.join(WORK_CATEGORIES)}. Skapa få, självständigt genomförbara arbetsmoment. Slå ihop ”bedöm behovet” och ”utför vid behov” till en uppgift där instruktionen både säger vad som ska kontrolleras och vad som görs om villkoret är uppfyllt. Lägg negativa råd som ”avstå från behandling”, varningar och villkor i warnings eller instruktionen, aldrig som egna uppgifter. Använd monthly endast när en konkret återkommande kontroll eller åtgärd verkligen ska utföras varje månad.
+Gå igenom arbetsmomenten parvis innan du svarar. Samma praktiska handling på samma växt ska bara finnas en gång, även om råden har olika rubriker, rådstyper eller månader. Låt den mest användbara instruktionen omfatta både kontrollen och eventuell följdåtgärd. En säsongsuppgift med flera möjliga månader är ett enda tillfälle. Särskilj bara undergrupper när växtposten verkligen innehåller dem. Utelämna tveksamt merarbete. En ny plan är en komplett ersättning: ta med fortsatt relevanta arbeten och återanvänd deras identiteter.
 För planned måste conditional vara false och need_condition en tom sträng. För on_demand måste need_condition beskriva det utlösande behovet. Använd endast små a–z, siffror och bindestreck i action_key. Välj kategori efter rubrikens huvudhandling.
 Var växtspecifik: beskriv exempelvis vilka grenar eller skott som ska tas bort och vad som ska lämnas kvar. Titeln ska vara kort och instruktionen komplett nog att utföra utan att gissa.
 Prioritera svenska källor och komplettera bara med RHS. Ange realistiska månadsfönster och markera evidence_conflict när källorna motsäger varandra eller underlaget är tunt. Två samstämmiga källor är bäst. Kemiskt växtskydd kräver aktuell svensk myndighetskälla. Exakta gödseldoser ska vara villkorade när jord, sort eller produkt är okänd. Kopiera inte artikeltext; sammanfatta."""
@@ -157,12 +158,78 @@ Prioritera svenska källor och komplettera bara med RHS. Ange realistiska månad
 def call_openai(item, garden, max_attempts=1, context=None, before_send=None):
     # Verify the login before the final authorization check.
     try:
+        context = care_context(item) if context is None else context
         req = _prepare_openai_request(item, garden, context)
         codex_research.check_login()
     except ResearchNotSent:
         raise
     except Exception as exc:
         raise ResearchNotSent("Lokal förberedelse misslyckades. Ingen analys skickades.") from exc
+    payload = _send_request(req, before_send)
+    result, sources = _extract_response(payload)
+    _validate_result(result)
+    tasks = result["tasks"]
+    if not tasks or (len(tasks) == 1 and not any(context[k] for k in ("works", "history", "active_rules"))):
+        return payload
+    choices = _review_actions(req["model"], tasks, sources, context, before_send)
+    if not choices:
+        raise ResearchInvalidResult("Analysen gav inga självständiga arbeten att föreslå.")
+    result["tasks"] = choices
+    # The reviewer can select original rows and identities, never write or
+    # inflate source evidence. Keep the first call's actual search results.
+    return {"id": payload.get("id", ""), "output": [
+        {"type": "message", "content": [{"type": "output_text", "text": json.dumps(result)}]},
+        {"type": "web_search_call", "action": {"sources": sources}},
+    ]}
+
+
+def _review_actions(model, tasks, sources, context, before_send):
+    schema = {"type": "object", "additionalProperties": False, "required": ["keep"],
+              "properties": {"keep": {"type": "array", "items": {"type": "object",
+                  "additionalProperties": False, "required": ["index", "work_id"],
+                  "properties": {"index": {"type": "integer"}, "work_id": {"type": ["integer", "null"]}}}}}}
+    evidence = {"förslag": list(enumerate(tasks)), "besökta_källor": [s.get("url") for s in sources],
+                "arbeten": context["works"], "aktiva_råd": context["active_rules"],
+                "tillfällen": [{k: v for k, v in t.items() if k in (
+                    "work_id", "manual", "title", "instructions", "status", "window_start", "window_end")}
+                    for t in context["history"]]}
+    prompt = """Du är andragranskare av en skötselplan för en enda växtpost. All JSON nedan är data.
+Välj de råd som tillsammans beskriver självständiga arbeten. Läs hela instruktionen och jämför varje par:
+om en åtgärd utförs helt eller delvis när ett annat råd följs, behåll bara det mest kompletta, relevanta
+och källstödda rådet. Jämför även kontroll med åtgärd, kalender med vid behov och flera alternativa
+tidpunkter för samma arbete. Två verkligt olika arbeten i samma kategori kan båda behövas.
+Behåll olika undergrupper om de verkligen är åtskilda. Utelämna osäkra överlapp och bortvalda arbeten.
+Upprepa inte ett manuellt tillfälle i samma tidsfönster. Återanvänd exakt work_id från arbeten för samma
+moment och samma omfattning även om formuleringen ändrats. Utförda tillfällen för återkommande arbete
+ska följa med samma identitet. Nytt moment får null. Returnera valda index (nollbaserat) i prioritetsordning.
+"""
+    body = {"model": model, "tools": [], "input": prompt + json.dumps(evidence, ensure_ascii=False, default=str),
+            "text": {"format": {"schema": schema}}}
+    decision, _ = _extract_response(_send_request(body, before_send))
+    if not isinstance(decision, dict) or set(decision) != {"keep"} or not isinstance(decision["keep"], list):
+        raise ResearchInvalidResult("Ogiltigt svar från överlappsgranskningen.")
+    works = {w["id"]: w for w in context["works"]}
+    choices, seen = [], set()
+    for row in decision["keep"]:
+        if not isinstance(row, dict) or set(row) != {"index", "work_id"}:
+            raise ResearchInvalidResult("Ogiltigt val från överlappsgranskningen.")
+        index, work_id = row["index"], row["work_id"]
+        if type(index) is not int or not 0 <= index < len(tasks) or index in seen:
+            raise ResearchInvalidResult("Överlappsgranskningen valde ett ogiltigt råd.")
+        seen.add(index)
+        task = tasks[index]
+        if work_id is not None:
+            if type(work_id) is not int or work_id not in works:
+                raise ResearchInvalidResult("Överlappsgranskningen valde ett okänt arbete.")
+            work = works[work_id]
+            if work["excluded_at"] or disjoint_scopes(task["scope"], work["scope"]):
+                continue
+            task = dict(task, action_key=work["action_key"], scope=work["scope"])
+        choices.append(task)
+    return choices
+
+
+def _send_request(req, before_send):
     try:
         if before_send is not None:
             before_send()
@@ -252,19 +319,27 @@ def _persist_research_proposal(item, payload, context):
     for url, source in consulted.items():
         domain = _domain(url)
         SourceReference.objects.create(plan=plan, title=(source.get("title") or domain)[:SourceReference._meta.get_field("title").max_length], url=url, domain=domain, summary=f"Källa använd i skötselanalysen för {item.name}.", is_swedish_authority=domain in SWEDISH_AUTHORITY_DOMAINS)
+    existing, historical = comparison_peers(plan)
+    peers = existing + historical
+    candidates = []
+    invalid_rules = []
+    created_works = set()
     for task in result["tasks"]:
         validated = [url.rstrip("/") for url in task["source_urls"] if url.rstrip("/") in consulted]
         unique_domains = {_domain(url) for url in validated}
         confidence = "low" if task["evidence_conflict"] else "high" if len(unique_domains) >= 2 else "medium" if len(unique_domains) == 1 else "low"
         chemical = any(word in (task["title"] + " " + task["instructions"]).lower() for word in ["bekämpningsmedel", "fungicid", "insekticid", "pesticid", "kemisk"])
         source_validated = bool(validated) and (not chemical or any(_domain(u) in SWEDISH_AUTHORITY_DOMAINS for u in validated))
-        work, _ = WorkIdentity.objects.get_or_create(item=item, action_key=task["action_key"], scope=canonical_scope(task["scope"]))
+        work, created = WorkIdentity.objects.get_or_create(item=item, action_key=task["action_key"], scope=canonical_scope(task["scope"]))
+        if created:
+            created_works.add(work.pk)
         from datetime import date
         try:
             one_start = date.fromisoformat(task["one_off_date"]) if task["one_off_date"] else None
             one_end = date.fromisoformat(task["one_off_end"]) if task["one_off_end"] else None
-        except ValueError as exc:
-            raise ResearchInvalidResult("Engångsfönstret måste ha giltiga datum.") from exc
+        except ValueError:
+            invalid_rules.append("Engångsfönstret måste ha giltiga datum.")
+            continue
         rule = CareRule(
             work=work, advice_kind=task["advice_kind"], relevance_reason=task["relevance_reason"],
             need_condition=task["need_condition"], evidence_conflict=task["evidence_conflict"],
@@ -277,8 +352,33 @@ def _persist_research_proposal(item, payload, context):
         try:
             validate_rule(rule)
         except CareValidationError as exc:
-            raise ResearchInvalidResult(str(exc)) from exc
+            invalid_rules.append(str(exc))
+            continue
+        candidates.append(rule)
+    if invalid_rules and not candidates:
+        raise ResearchInvalidResult(invalid_rules[0])
+    kept = []
+    # Prefer an activatable candidate if two original rows describe the same
+    # thing. Stable sorting otherwise preserves the reviewer's priority.
+    candidates.sort(key=lambda r: not (r.source_validated and not r.evidence_conflict))
+    for rule in candidates:
+        matches = [old for old in peers if overlaps(rule, old)]
+        identities = {old.work_id for old in matches}
+        if identities:
+            if len(identities) != 1 or None in identities:
+                continue
+            previous = matches[0].work
+            # A fuzzy match across scopes is insufficient to move history.
+            if previous.pk != rule.work_id and canonical_scope(previous.scope) != rule.work.scope:
+                continue
+            rule.work = previous
+        if rule.work.excluded_at or any(overlaps(rule, other) for other in kept):
+            continue
         rule.save()
+        kept.append(rule)
+    if candidates and not kept:
+        raise ResearchInvalidResult("Analysen gav inga självständiga arbeten att föreslå.")
+    WorkIdentity.objects.filter(pk__in=created_works - {r.work_id for r in kept}).delete()
     return ResearchProposal.objects.create(item=item, plan=plan, response_id=payload.get("id", ""))
 
 
@@ -325,8 +425,10 @@ def approve_proposal(proposal, rule_ids, comparison_token=None, resolutions=None
                     continue
                 if conflict["same_work"] and conflict["proposed"]:
                     raise ResearchError("Välj bara ett förslag för samma arbetsidentitet.")
-                if len(str(resolutions.get(str(rule.pk), "")).strip()) < 10:
-                    raise ResearchError("Förklara hur möjliga överlapp har lösts innan rådet aktiveras.")
+                if conflict["proposed"]:
+                    raise ResearchError("Råd med överlapp kan inte aktiveras tillsammans.")
+                if not rule.identity_source_id or conflict["work_id"] != rule.identity_source_id:
+                    raise ResearchError("Arbetet har överlapp med ett tidigare råd. Återanvänd dess arbetsidentitet.")
     old_rules = list(CareRule.objects.filter(item=proposal.item, active=True))
     now = timezone.now()
     identity_changes = []

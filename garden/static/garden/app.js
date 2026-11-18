@@ -208,7 +208,7 @@ async function openReview() {
   showDialog(dialog);
   try {
     const {proposals} = await api('/api/proposals/');
-    $("#detail-content").innerHTML = `<h2>Granska skötsel</h2>${proposals.length ? proposals.map(p=>`<h3><button class="text-button" data-open-item="${p.item.id}">${escapeHtml(p.item.name)}</button></h3>${proposalMarkup(p.plan)}`).join('') : emptyState('Inget att ta ställning till just nu.', 'När du hämtar nya skötselråd för en växt kan du granska dem här.', '', 'check')}`;
+    $("#detail-content").innerHTML = `<h2 data-review-list>Granska skötsel</h2>${proposals.length ? proposals.map(p=>`<details${proposals.length === 1 ? ' open' : ''}><summary>${escapeHtml(p.item.name)} · ${p.plan.rules.length} råd</summary>${proposalMarkup(p.plan)}</details>`).join('') : emptyState('Inget att ta ställning till just nu.', 'När du hämtar nya skötselråd för en växt kan du granska dem här.', '', 'check')}`;
   } catch (error) {
     $("#detail-content").innerHTML = `<h2>Råden kunde inte hämtas</h2><p>${escapeHtml(error.message)}</p><button class="button secondary" data-review>Försök igen</button>`;
   }
@@ -484,7 +484,7 @@ function proposalMarkup(plan) {
   return `<section class="detail-section proposal" data-proposal="${plan.proposal_id}" data-token="${comparison.token}"><p class="eyebrow">Väntar på din granskning</p><h3>Förändringar i skötseln</h3><p>${escapeHtml(plan.summary)}</p>${comparison.context_changed ? '<p class="review-notice">Växtinformation eller historik har ändrats sedan analysen. Jämförelsen nedan använder dagens uppgifter.</p>' : ''}${plan.rules.map(r=>{
     const row = comparison.rows.find(x=>x.rule_id===r.id);
     const draft = state.reviewDrafts.get(r.id);
-    return `<div class="rule-choice"><input aria-label="Välj ${escapeHtml(r.title)}" type="checkbox" value="${r.id}" ${(draft?.checked ?? row.preselected) ? 'checked' : ''} ${row.error ? 'disabled' : ''}><span><strong>${escapeHtml(r.title)}</strong><small>${labels[row.change]} · ${escapeHtml(r.scope)} · ${{planned:'Planerat arbete', on_demand:'Vid behov', general:'Allmänt råd', review:'Kräver klassificering'}[r.advice_kind]}</small><small>${escapeHtml(r.relevance_reason)}</small>${row.history_count ? `<small>${row.history_count} tidigare utförda eller överhoppade tillfällen respekteras.</small>` : ""}<small>${r.cadence === 'one_off' ? `${escapeHtml(r.one_off_date)}–${escapeHtml(r.one_off_end)}` : `${monthName(r.start_month)}–${monthName(r.end_month)}`}</small>${row.error ? `<p class="review-notice">${escapeHtml(row.error)}</p>` : ''}${row.conflicts.length ? `<p class="review-notice">Möjligt överlapp: ${row.conflicts.map(c=>`${escapeHtml(c.title)} (${escapeHtml(c.scope)})`).join(', ')}</p><label>Hur har överlappet lösts?<textarea data-resolution="${r.id}" placeholder="Beskriv skillnaden i moment eller tillfälle, eller välj bort dubbletten.">${escapeHtml(draft?.resolution || "")}</textarea></label>` : ''}<details><summary>Instruktion och källor</summary><p>${escapeHtml(r.instructions)}</p>${r.source_urls.map(u=>`<a class="source-link" href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`).join('')}</details><button class="text-button" data-edit-rule="${r.id}">Redigera</button></span></div>`;
+    return `<div class="rule-choice"><input aria-label="Välj ${escapeHtml(r.title)}" type="checkbox" value="${r.id}" ${(draft?.checked ?? row.preselected) ? 'checked' : ''} ${row.error ? 'disabled' : ''}><span><strong>${escapeHtml(r.title)}</strong><small>${labels[row.change]} · ${escapeHtml(r.scope)} · ${{planned:'Planerat arbete', on_demand:'Vid behov', general:'Allmänt råd', review:'Kräver klassificering'}[r.advice_kind]}</small><small>${escapeHtml(r.relevance_reason)}</small>${row.history_count ? `<small>${row.history_count} tidigare utförda eller överhoppade tillfällen respekteras.</small>` : ""}<small>${r.cadence === 'one_off' ? `${escapeHtml(r.one_off_date)}–${escapeHtml(r.one_off_end)}` : `${monthName(r.start_month)}–${monthName(r.end_month)}`}</small>${row.error ? `<p class="review-notice">${escapeHtml(row.error)}</p>` : ''}${row.conflicts.length ? `<p class="review-notice">Möjligt överlapp: ${row.conflicts.map(c=>`${escapeHtml(c.title)} (${escapeHtml(c.scope)})`).join(', ')}</p>${r.identity_source_id ? '' : '<small>Öppna Redigera om arbetets identitet behöver ändras.</small>'}` : ''}${r.identity_source_id ? `<label>Beskriv identitetsändringen<textarea data-resolution="${r.id}">${escapeHtml(draft?.resolution || "")}</textarea></label>` : ''}<details><summary>Instruktion och källor</summary><p>${escapeHtml(r.instructions)}</p>${r.source_urls.map(u=>`<a class="source-link" href="${escapeHtml(u)}" target="_blank" rel="noopener">${escapeHtml(u)}</a>`).join('')}</details><button class="text-button" data-edit-rule="${r.id}">Redigera</button></span></div>`;
   }).join('')}${comparison.removed.map(r=>`<p>Tas bort: ${escapeHtml(r.title)} · ${escapeHtml(r.scope)}. Saknas i det nya förslaget; historiken bevaras.</p>`).join('')}<p class="muted">Endast valda råd behålls i den nya planen. Bortvalda gamla tillfällen arkiveras med orsak.</p><div class="form-actions"><button class="text-button" data-reject="${plan.proposal_id}">Avvisa</button><button class="button" data-approve="${plan.proposal_id}">Godkänn valda</button></div></section>${planSources(plan)}`;
 }
 
@@ -519,7 +519,14 @@ async function approve(id) {
   const rules = $$(`.proposal[data-proposal="${id}"] input:checked`).map(el=>Number(el.value));
   const proposal = $(`.proposal[data-proposal="${id}"]`);
   const resolutions = Object.fromEntries([...proposal.querySelectorAll('[data-resolution]')].map(e=>[e.dataset.resolution,e.value]));
-  await api(`/api/proposals/${id}/approve/`, {method:"POST", body:JSON.stringify({rule_ids:rules, comparison_token:proposal.dataset.token, resolutions})}); toast(`${rules.length} råd godkända`); $("#detail-dialog").close(); await load();
+  await api(`/api/proposals/${id}/approve/`, {method:"POST", body:JSON.stringify({rule_ids:rules, comparison_token:proposal.dataset.token, resolutions})}); toast(`${rules.length} råd godkända`); await finishReview();
+}
+
+async function finishReview() {
+  const inQueue = Boolean($("#detail-content [data-review-list]"));
+  if (!inQueue) $("#detail-dialog").close();
+  await load();
+  if (inQueue) await openReview();
 }
 
 function editRule(button) {
@@ -689,7 +696,7 @@ document.addEventListener("click", async event => {
   const editItemButton=event.target.closest("[data-edit-item]"); if(editItemButton && state.openItem){editItem(state.openItem);return;}
   const approveButton=event.target.closest("[data-approve]"); if(approveButton){approveButton.disabled=true;try {await approve(approveButton.dataset.approve);} finally {approveButton.disabled=false;}return;}
   const editButton=event.target.closest("[data-edit-rule]"); if(editButton){editRule(editButton);return;}
-  const reject=event.target.closest("[data-reject]"); if(reject){await api(`/api/proposals/${reject.dataset.reject}/`,{method:"DELETE"});toast("Förslaget avvisades");$("#detail-dialog").close();await load();return;}
+  const reject=event.target.closest("[data-reject]"); if(reject){await api(`/api/proposals/${reject.dataset.reject}/`,{method:"DELETE"});toast("Förslaget avvisades");await finishReview();return;}
   const renameArea=event.target.closest("[data-rename-area]"); if(renameArea){const name=window.prompt("Nytt namn på området",renameArea.dataset.areaName);if(name?.trim()){await api(`/api/areas/${renameArea.dataset.renameArea}/`,{method:"PATCH",body:JSON.stringify({name:name.trim()})});toast("Området har bytt namn");await load();}return;}
   const deleteArea=event.target.closest("[data-delete-area]"); if(deleteArea){if(window.confirm(`Ta bort området ${deleteArea.dataset.areaName}? Växterna blir inte placerade men deras platsdetaljer sparas.`)){await api(`/api/areas/${deleteArea.dataset.deleteArea}/`,{method:"DELETE"});toast("Området togs bort");await load();}return;}
   if(event.target.closest("[data-close]")) {

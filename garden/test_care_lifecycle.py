@@ -129,6 +129,9 @@ class CareLifecycleTests(TenantTestCase):
         self.assertTrue(all(row['conflicts'] and not row['preselected'] for row in comparison['rows']))
         with self.assertRaisesRegex(ResearchError, 'överlapp'):
             approve_proposal(proposal, [rule.pk, second.pk], comparison['token'])
+        with self.assertRaisesRegex(ResearchError, 'överlapp'):
+            approve_proposal(proposal, [rule.pk, second.pk], comparison['token'],
+                             {str(r.pk): 'Fri text kan inte godkänna dubbletter.' for r in (rule, second)})
         # Selecting only one resolves overlap inside the proposed plan.
         self.approve(proposal, rule)
 
@@ -329,9 +332,11 @@ class CareLifecycleTests(TenantTestCase):
     def test_approved_distinct_recurring_work_is_not_queued_again_by_cleanup(self, _):
         proposal,rule=self.proposal()
         second_work=WorkIdentity.objects.create(item=self.item,action_key='bind',scope='sommarhallon')
-        other=self.rule(plan=proposal.plan,work=second_work,title='Bind upp skotten',active=False,start_month=4,end_month=5)
-        notes={str(rule.pk):'Gallringen görs efter skörden på fruktade skott.',str(other.pk):'Uppbindningen görs på våren på nya skott.'}
-        approve_proposal(proposal,[rule.pk,other.pk],plan_comparison(proposal.plan)['token'],notes)
+        other=self.rule(plan=proposal.plan,work=second_work,title='Bind upp skotten',active=False,start_month=4,end_month=5,
+                        instructions='Fäst de nya skotten löst längs spaljén på våren.')
+        comparison = plan_comparison(proposal.plan)
+        self.assertTrue(all(row['preselected'] for row in comparison['rows']))
+        approve_proposal(proposal,[rule.pk,other.pk],comparison['token'])
         report=clean_existing_content(self.tenant_garden, apply=True)
         self.assertEqual(report['queued_proposals'],[])
         self.assertEqual(self.item.proposals.count(),1)

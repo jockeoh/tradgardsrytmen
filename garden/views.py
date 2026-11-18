@@ -3,7 +3,8 @@ import json
 from django.conf import settings
 from datetime import date
 from django.db import IntegrityError, transaction
-from django.db.models import Q, F
+from django.db.models import Q, F, OuterRef, Subquery
+from django.db.models.functions import Coalesce
 from django.http import HttpResponse, JsonResponse
 from django.shortcuts import get_object_or_404, redirect, render
 from django.utils import timezone
@@ -67,7 +68,13 @@ def _item_json(item, detail=False):
     return data
 
 
-def _rule_json(r):
+def _work_choices(item_id):
+    latest_title = CareRule.objects.filter(work_id=OuterRef("pk")).order_by("-pk").values("title")[:1]
+    return list(WorkIdentity.objects.filter(item_id=item_id, merged_into=None).annotate(
+        title=Coalesce(Subquery(latest_title), F("action_key"))).order_by("pk").values("id", "scope", "title"))
+
+
+def _rule_json(r, works=None):
     return {"id": r.pk, "title": r.title, "category": r.category, "instructions": r.instructions,
         "cadence": r.cadence, "start_month": r.start_month, "end_month": r.end_month,
         "conditional": r.conditional, "confidence": r.confidence, "source_validated": r.source_validated,
@@ -78,18 +85,19 @@ def _rule_json(r):
         "identity_change_kind": r.identity_change_kind,
         "one_off_date": str(r.one_off_date or ""), "one_off_end": str(r.one_off_end or ""),
         "item": {"id": r.item_id, "name": r.item.name},
-        "works": [{"id": w.pk, "scope": w.scope, "title": w.rules.order_by("-pk").first().title if w.rules.exists() else w.action_key} for w in r.item.works.filter(merged_into=None)]}
+        "works": _work_choices(r.item_id) if works is None else works}
 
 
 def _plan_json(plan):
     proposal = getattr(plan, "proposal", None)
+    works = _work_choices(plan.item_id)
     return {
         "id": plan.pk, "version": plan.version, "status": plan.status, "summary": plan.summary,
         "warnings": plan.warnings, "uncertainties": plan.uncertainties,
         "proposal_id": proposal.pk if proposal else None,
         "sources": [{"title": s.title, "url": s.url, "domain": s.domain} for s in plan.sources.all()],
         "comparison": plan_comparison(plan) if plan.status == "pending" else None,
-        "rules": [_rule_json(r) for r in plan.rules.select_related("work").all()],
+        "rules": [_rule_json(r, works) for r in plan.rules.select_related("work", "item").all()],
     }
 
 

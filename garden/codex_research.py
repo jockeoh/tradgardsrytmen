@@ -25,17 +25,19 @@ def check_login():
 
 
 def execute(body):
-    tool = body['tools'][0]
+    tool = next(iter(body['tools']), None)
     with tempfile.TemporaryDirectory(prefix='garden-research-') as tmp:
         schema = Path(tmp, 'schema.json')
         output = Path(tmp, 'result.json')
         schema.write_text(json.dumps(body['text']['format']['schema']))
-        options = {'forced_login_method': 'chatgpt', 'web_search': 'live',
-                   'model_reasoning_effort': 'low', 'tools.web_search.allowed_domains': tool['filters']['allowed_domains'],
+        options = {'forced_login_method': 'chatgpt', 'web_search': 'live' if tool else 'disabled',
+                   'model_reasoning_effort': body.get('reasoning', {}).get('effort', 'low'),
                    'features.shell_tool': False, 'features.unified_exec': False, 'features.apps': False,
                    'features.plugins': False, 'features.multi_agent': False}
-        for key in ('country', 'city', 'region'):
-            options['tools.web_search.location.' + key] = tool['user_location'][key]
+        if tool:
+            options['tools.web_search.allowed_domains'] = tool['filters']['allowed_domains']
+            for key in ('country', 'city', 'region'):
+                options['tools.web_search.location.' + key] = tool['user_location'][key]
         cmd = [settings.RESEARCH_CODEX_BIN, 'exec', '--strict-config', '--ephemeral', '--ignore-rules',
                '--skip-git-repo-check', '--ignore-user-config', '--sandbox', 'read-only',
                '--model', body['model'], '--json', '--output-schema', str(schema), '--output-last-message', str(output)]
@@ -43,7 +45,7 @@ def execute(body):
             cmd.extend(['-c', f'{key}={json.dumps(value, ensure_ascii=False)}'])
         cmd.extend(['-c', 'mcp_servers={}', '-'])
         response = subprocess.run(cmd, input=body['input'], text=True, stdout=subprocess.PIPE,
-                                  stderr=subprocess.DEVNULL, cwd=tmp, env=environment(), timeout=155, check=True)
+                                  stderr=subprocess.DEVNULL, cwd=tmp, env=environment(), timeout=155 if tool else 65, check=True)
         sources = {}
         for line in response.stdout.splitlines():
             event = json.loads(line)
