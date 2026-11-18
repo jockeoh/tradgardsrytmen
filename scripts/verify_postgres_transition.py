@@ -44,7 +44,7 @@ def main():
             created.append(name)
         with TemporaryDirectory(prefix='p3-transition-') as directory:
             path = Path(directory)
-            common = dict(os.environ, OPENAI_API_KEY='', TRADGARDSRYTMEN_DURABLE_JOBS='0', TRADGARDSRYTMEN_DATA_DIR=str(path))
+            common = dict(os.environ, TRADGARDSRYTMEN_CODEX_BIN='', TRADGARDSRYTMEN_DURABLE_JOBS='0', TRADGARDSRYTMEN_DATA_DIR=str(path))
             sqlite_env = dict(common, TRADGARDSRYTMEN_DB_ENGINE='sqlite', TRADGARDSRYTMEN_DB_PATH=str(path / 'source.sqlite3'))
             pg_env = dict(common, TRADGARDSRYTMEN_DB_ENGINE='postgresql', PGDATABASE=names[0])
             run(sqlite_env, 'migrate', '--noinput')

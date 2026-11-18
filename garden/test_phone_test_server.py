@@ -64,7 +64,7 @@ launcher.CREDENTIALS_PATH = launcher.DATA_DIR / 'credentials.json'
 from config import phone_test_settings as settings
 assert settings.DATABASES['default']['NAME'] == str(launcher.DATABASE_PATH)
 assert settings.DATABASES['default']['ENGINE'] == 'django.db.backends.sqlite3'
-assert not settings.OPENAI_API_KEY
+assert not settings.RESEARCH_CODEX_BIN
 assert not settings.OIDC_ISSUER and not settings.OIDC_JWKS_URL
 assert not settings.DURABLE_JOBS and not settings.NATIVE_PUSH_ENABLED
 assert os.environ['TRADGARDSRYTMEN_VAPID_KEY_PATH'].startswith(str(launcher.DATA_DIR))
@@ -79,7 +79,7 @@ print('isolated')
 """
             environment = {**os.environ, "TRADGARDSRYTMEN_DB_ENGINE": "postgresql",
                            "TRADGARDSRYTMEN_DB_PATH": "/never-open-production.sqlite3",
-                           "OPENAI_API_KEY": "synthetic-inherited-key", "TRADGARDSRYTMEN_DEBUG": "0",
+                           "TRADGARDSRYTMEN_CODEX_BIN": "synthetic-inherited-key", "TRADGARDSRYTMEN_DEBUG": "0",
                            "TRADGARDSRYTMEN_SECRET_KEY": "invalid",
                            "TRADGARDSRYTMEN_DURABLE_JOBS": "1", "TRADGARDSRYTMEN_NATIVE_PUSH": "1",
                            "TRADGARDSRYTMEN_OIDC_ISSUER": "https://must-not-contact.invalid",

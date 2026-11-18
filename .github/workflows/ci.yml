@@ -13,7 +13,7 @@ jobs:
             python: '3.13'
     runs-on: ${{ matrix.os }}
     env:
-      OPENAI_API_KEY: ''
+      TRADGARDSRYTMEN_CODEX_BIN: ''
       TRADGARDSRYTMEN_DEBUG: '1'
     steps:
       - uses: actions/checkout@v4
@@ -48,7 +48,7 @@ jobs:
           --health-timeout 5s
           --health-retries 10
     env:
-      OPENAI_API_KEY: ''
+      TRADGARDSRYTMEN_CODEX_BIN: ''
       TRADGARDSRYTMEN_DB_ENGINE: postgresql
       PGHOST: 127.0.0.1
       PGPORT: '5432'
@@ -70,7 +70,7 @@ jobs:
   mobile:
     runs-on: ubuntu-latest
     env:
-      OPENAI_API_KEY: ''
+      TRADGARDSRYTMEN_CODEX_BIN: ''
       EXPO_NO_TELEMETRY: '1'
     steps:
       - uses: actions/checkout@v4

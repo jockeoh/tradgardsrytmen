@@ -2,7 +2,6 @@
 import http.client
 import json
 import threading
-import urllib.request
 from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from datetime import timedelta
 from unittest.mock import MagicMock, patch
@@ -26,9 +25,12 @@ def payload():
          'warnings': [], 'uncertainties': [], 'tasks': []})}]}]}
 
 
-@override_settings(DURABLE_JOBS=True, OPENAI_API_KEY='synthetic-never-sent')
+@override_settings(DURABLE_JOBS=True, RESEARCH_CODEX_BIN='synthetic-never-sent')
 class TransportBoundaryTests(TransactionTestCase):
     def setUp(self):
+        login = patch('garden.research.codex_research.check_login')
+        login.start()
+        self.addCleanup(login.stop)
         self.fixture()
 
     def fixture(self):
@@ -49,9 +51,7 @@ class TransportBoundaryTests(TransactionTestCase):
         return jobs.claim(self.garden)
 
     def response(self, raw=None):
-        response = MagicMock()
-        response.__enter__.return_value.read.return_value = json.dumps(payload()).encode() if raw is None else raw
-        return response
+        return json.dumps(payload()).encode() if raw is None else raw
 
     def complete(self):
         response = self.client.post(
@@ -83,7 +83,7 @@ class TransportBoundaryTests(TransactionTestCase):
 
     def research_change(self, kind, queued, during_network):
         job = self.queued() if queued else None
-        original = urllib.request.Request
+        original = research._prepare_openai_request
         def prepare(*args, **kwargs):
             request = original(*args, **kwargs)
             if not during_network:
@@ -94,7 +94,7 @@ class TransportBoundaryTests(TransactionTestCase):
             if during_network:
                 self.mutate(kind)
             return self.response()
-        with override_settings(DURABLE_JOBS=queued), patch('garden.research.urllib.request.Request', side_effect=prepare), patch('garden.research.urllib.request.urlopen', side_effect=send) as transport:
+        with override_settings(DURABLE_JOBS=queued), patch('garden.research._prepare_openai_request', side_effect=prepare), patch('garden.research.codex_research.execute', side_effect=send) as transport:
             if queued:
                 self.assertFalse(jobs.execute(job, allow_external=True))
             else:
@@ -172,9 +172,9 @@ class TransportBoundaryTests(TransactionTestCase):
                 context = json.loads(json.dumps(research.care_context(self.item), default=str))
                 def send(request, **kwargs):
                     self.assertFalse(connection.in_atomic_block)
-                    self.assertIn('Frozen observation', request.data.decode())
+                    self.assertIn('Frozen observation', request['input'])
                     return self.response()
-                with override_settings(DURABLE_JOBS=queued), patch('garden.research.urllib.request.urlopen', side_effect=send) as transport:
+                with override_settings(DURABLE_JOBS=queued), patch('garden.research.codex_research.execute', side_effect=send) as transport:
                     if queued:
                         self.assertTrue(jobs.execute(job, allow_external=True))
                         self.assertFalse(jobs.execute(job, allow_external=True))
@@ -185,7 +185,7 @@ class TransportBoundaryTests(TransactionTestCase):
 
     @override_settings(DURABLE_JOBS=False)
     def test_unbound_sync_call_refused_and_operator_target_is_explicit(self):
-        with patch('garden.research.urllib.request.urlopen', return_value=self.response()) as transport:
+        with patch('garden.research.codex_research.execute', return_value=self.response()) as transport:
             with self.assertRaises(research.ResearchNotSent):
                 research.create_research_proposal(self.item, self.profile)
             other = Garden.objects.create(name='Other')
@@ -201,7 +201,7 @@ class TransportBoundaryTests(TransactionTestCase):
             with self.subTest(error=type(error)):
                 self.fixture()
                 job = self.queued()
-                with patch('garden.research.urllib.request.Request', side_effect=error), patch('garden.research.urllib.request.urlopen') as transport:
+                with patch('garden.research._prepare_openai_request', side_effect=error), patch('garden.research.codex_research.execute') as transport:
                     self.assertFalse(jobs.execute(job, allow_external=True))
                 transport.assert_not_called()
                 job.refresh_from_db()
@@ -227,7 +227,7 @@ class TransportBoundaryTests(TransactionTestCase):
             with self.subTest(raw=raw):
                 self.fixture()
                 job = self.queued()
-                with patch('garden.research.urllib.request.urlopen', return_value=self.response(raw)) as transport:
+                with patch('garden.research.codex_research.execute', return_value=self.response(raw)) as transport:
                     self.assertFalse(jobs.execute(job, allow_external=True))
                 self.assertEqual(transport.call_count, 1)
                 job.refresh_from_db()
@@ -243,9 +243,9 @@ class TransportBoundaryTests(TransactionTestCase):
                 with self.subTest(reading=reading, error=type(error)):
                     self.fixture()
                     job = self.queued()
-                    with patch('garden.research.urllib.request.urlopen') as transport:
+                    with patch('garden.research.codex_research.execute') as transport:
                         if reading:
-                            transport.return_value.__enter__.return_value.read.side_effect = error
+                            transport.side_effect = error
                         else:
                             transport.side_effect = error
                         self.assertFalse(jobs.execute(job, allow_external=True))
@@ -263,7 +263,7 @@ class TransportBoundaryTests(TransactionTestCase):
                 job = self.queued()
                 def recover():
                     jobs.recover(self.garden, job.lease_until + timedelta(seconds=1))
-                original = urllib.request.Request
+                original = research._prepare_openai_request
                 def prepare(*args, **kwargs):
                     if phase == 'prepare':
                         recover()
@@ -273,9 +273,9 @@ class TransportBoundaryTests(TransactionTestCase):
                     recover()
                     result = self.response(b'not json')
                     if phase == 'read':
-                        result.__enter__.return_value.read.side_effect = TimeoutError()
+                        raise TimeoutError()
                     return result
-                with patch('garden.research.urllib.request.Request', side_effect=prepare), patch('garden.research.urllib.request.urlopen', side_effect=send) as transport:
+                with patch('garden.research._prepare_openai_request', side_effect=prepare), patch('garden.research.codex_research.execute', side_effect=send) as transport:
                     self.assertFalse(jobs.execute(job, allow_external=True))
                 self.assertEqual(transport.call_count, 0 if phase == 'prepare' else 1)
                 job.refresh_from_db()
@@ -346,7 +346,7 @@ class TransportBoundaryTests(TransactionTestCase):
                         with self.assertRaises(FutureTimeout):
                             result['future'].result(timeout=0.2)
                         return original(*args, **kwargs)
-                    with patch('garden.research.urllib.request.urlopen', return_value=self.response()), patch('garden.research._persist_research_proposal', side_effect=persist):
+                    with patch('garden.research.codex_research.execute', return_value=self.response()), patch('garden.research._persist_research_proposal', side_effect=persist):
                         response = self.client.post(f'/api/items/{self.item.pk}/research/', '{}', content_type='application/json')
                         self.assertEqual(response.status_code, 201)
                     result['future'].result(10)
@@ -362,7 +362,7 @@ class TransportBoundaryTests(TransactionTestCase):
                     if candidate.state == 'sending':
                         raise RuntimeError('synthetic local check failure')
                     return original(candidate)
-                with patch('garden.jobs.authorized', side_effect=check), patch('garden.push.get_vapid_keys', return_value=('public', 'private')), patch('garden.push.webpush') as push_transport, patch('garden.research.urllib.request.urlopen') as ai_transport:
+                with patch('garden.jobs.authorized', side_effect=check), patch('garden.push.get_vapid_keys', return_value=('public', 'private')), patch('garden.push.webpush') as push_transport, patch('garden.research.codex_research.execute') as ai_transport:
                     self.assertFalse(jobs.execute(job, allow_external=True))
                 push_transport.assert_not_called()
                 ai_transport.assert_not_called()
@@ -378,7 +378,7 @@ class TransportBoundaryTests(TransactionTestCase):
 
     @override_settings(DURABLE_JOBS=False)
     def test_sync_invalid_response_envelope_is_controlled_error_without_retry(self):
-        with patch('garden.research.urllib.request.urlopen', return_value=self.response(b'[]')) as transport:
+        with patch('garden.research.codex_research.execute', return_value=self.response(b'[]')) as transport:
             response = self.client.post(f'/api/items/{self.item.pk}/research/', '{}', content_type='application/json')
         self.assertEqual(response.status_code, 503)
         self.assertEqual(transport.call_count, 1)
@@ -391,7 +391,7 @@ class TransportBoundaryTests(TransactionTestCase):
         from .management.commands.replace_pending_research import REANALYSIS_MARKER
         other = Garden.objects.create(name='Other')
         foreign = GardenItem.objects.create(garden=other, name='Foreign')
-        with patch('garden.research.urllib.request.urlopen', return_value=self.response()) as transport:
+        with patch('garden.research.codex_research.execute', return_value=self.response()) as transport:
             call_command('research_starters', garden=str(self.garden.public_id), stdout=StringIO())
             proposal = self.item.proposals.get()
             proposal.error = REANALYSIS_MARKER

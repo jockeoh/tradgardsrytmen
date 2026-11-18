@@ -90,6 +90,9 @@ class TaskMaterializationTests(TenantTestCase):
 
 class ProposalTests(TenantTestCase):
     def setUp(self):
+        login = patch('garden.research.codex_research.check_login')
+        login.start()
+        self.addCleanup(login.stop)
         self.item = GardenItem.objects.create(garden=self.tenant_garden, name="Hallon", category="Bär")
         self.garden = GardenSettings.load(self.tenant_garden)
 
@@ -133,21 +136,21 @@ class ProposalTests(TenantTestCase):
         self.assertTrue(TaskOccurrence.objects.filter(pk=current.pk, status="completed").exists())
         self.assertTrue(TaskOccurrence.objects.filter(pk=future.pk, status="archived").exists())
 
-    @override_settings(OPENAI_API_KEY="")
+    @override_settings(RESEARCH_CODEX_BIN="")
     def test_missing_key_has_clear_error(self):
         from .research import call_openai
-        with self.assertRaisesRegex(ResearchError, "nyckel saknas"):
+        with self.assertRaisesRegex(ResearchError, "CLI saknas"):
             call_openai(self.item, self.garden)
 
-    @override_settings(OPENAI_API_KEY="test-key")
-    @patch("garden.research.urllib.request.urlopen")
+    @override_settings(RESEARCH_CODEX_BIN="test-key")
+    @patch("garden.research.codex_research.execute")
     def test_notes_are_sent_as_cautious_local_observations(self, mocked_open):
         from .research import call_openai
         self.item.notes = "Vissa plantor verkar döda, kan behöva bytas ut våren 2027."
         self.item.save(update_fields=["notes"])
-        mocked_open.return_value.__enter__.return_value.read.return_value = json.dumps(self.response()).encode()
+        mocked_open.return_value = json.dumps(self.response()).encode()
         call_openai(self.item, self.garden)
-        request_body = json.loads(mocked_open.call_args.args[0].data)
+        request_body = mocked_open.call_args.args[0]
         self.assertIn(self.item.notes, request_body["input"])
         self.assertIn("lokal observation", request_body["input"])
         self.assertIn("inte som en bekräftad diagnos", request_body["input"])
@@ -228,8 +231,8 @@ class ProposalTests(TenantTestCase):
         with self.assertRaisesRegex(ResearchError, "huvudhandling"):
             create_research_proposal(self.item, self.garden, mismatched)
 
-    @override_settings(OPENAI_API_KEY="test-key")
-    @patch("garden.research.urllib.request.urlopen")
+    @override_settings(RESEARCH_CODEX_BIN="test-key")
+    @patch("garden.research.codex_research.execute")
     def test_timeout_never_resends(self, mocked_open):
         import urllib.error
         from .research import call_openai

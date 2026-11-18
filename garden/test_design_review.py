@@ -7,7 +7,7 @@ from .testing import TenantTestCase
 
 
 class DesignReviewRegressionTests(TenantTestCase):
-    @override_settings(OPENAI_API_KEY='test-key-must-never-be-used')
+    @override_settings(RESEARCH_CODEX_BIN='test-key-must-never-be-used')
     @patch('garden.views.create_research_proposal')
     def test_saving_plant_never_starts_research(self, research):
         response = self.client.post('/api/items/', json.dumps({'name': 'Ny ros', 'notes': 'Privat observation'}), content_type='application/json')

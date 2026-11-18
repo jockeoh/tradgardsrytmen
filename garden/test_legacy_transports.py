@@ -13,9 +13,12 @@ from .research import call_openai, ResearchNotSent, ResearchOutcomeUnknown, Rese
 from .testing import TenantTestCase
 
 
-@override_settings(DURABLE_JOBS=False, OPENAI_API_KEY="synthetic")
+@override_settings(DURABLE_JOBS=False, RESEARCH_CODEX_BIN="synthetic")
 class LegacyResearchTransportTests(TenantTestCase):
     def setUp(self):
+        login = patch('garden.research.codex_research.check_login')
+        login.start()
+        self.addCleanup(login.stop)
         self.item = GardenItem.objects.create(garden=self.tenant_garden, name="Syntetisk ros")
         self.profile = GardenSettings.load(self.tenant_garden)
 
@@ -24,34 +27,34 @@ class LegacyResearchTransportTests(TenantTestCase):
                   urllib.error.HTTPError("https://example.invalid", 429, "limited", {}, None),
                   urllib.error.HTTPError("https://example.invalid", 503, "unavailable", {}, None)]
         for error in errors:
-            with self.subTest(error=error), patch("garden.research.urllib.request.urlopen", side_effect=error) as transport:
+            with self.subTest(error=error), patch("garden.research.codex_research.execute", side_effect=error) as transport:
                 with self.assertRaisesRegex(ResearchOutcomeUnknown, "Ingen automatisk omsändning"):
                     call_openai(self.item, self.profile, max_attempts=5)
                 self.assertEqual(transport.call_count, 1)
 
-    @override_settings(OPENAI_API_KEY="")
+    @override_settings(RESEARCH_CODEX_BIN="")
     def test_missing_key_is_definitely_unsent(self):
-        with patch("garden.research.urllib.request.urlopen") as transport:
+        with patch("garden.research.codex_research.execute") as transport:
             with self.assertRaises(ResearchNotSent):
                 call_openai(self.item, self.profile)
             transport.assert_not_called()
 
     def test_read_timeout_is_ambiguous_without_resend(self):
-        with patch("garden.research.urllib.request.urlopen") as transport:
-            transport.return_value.__enter__.return_value.read.side_effect = TimeoutError()
+        with patch("garden.research.codex_research.execute") as transport:
+            transport.side_effect = TimeoutError()
             with self.assertRaises(ResearchOutcomeUnknown):
                 call_openai(self.item, self.profile)
             self.assertEqual(transport.call_count, 1)
 
     def test_bad_json_is_clear_error_without_resend(self):
-        with patch("garden.research.urllib.request.urlopen") as transport:
-            transport.return_value.__enter__.return_value.read.return_value = b"invalid"
+        with patch("garden.research.codex_research.execute") as transport:
+            transport.return_value = b"invalid"
             with self.assertRaisesRegex(ResearchError, "inte giltig JSON"):
                 call_openai(self.item, self.profile)
             self.assertEqual(transport.call_count, 1)
 
     def test_web_timeout_preserves_plant_and_manual_flow(self):
-        with patch("garden.research.urllib.request.urlopen", side_effect=TimeoutError()) as transport:
+        with patch("garden.research.codex_research.execute", side_effect=TimeoutError()) as transport:
             response = self.client.post(f"/api/items/{self.item.pk}/research/", data="{}", content_type="application/json")
         self.assertEqual(response.status_code, 503)
         self.assertIn("utfall är oklart", response.json()["error"])

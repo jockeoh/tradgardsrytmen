@@ -14,7 +14,7 @@ from .jobs import enqueue_research, claim, recover, execute, digest
 from .job_operations import reconciliation_snapshot, reconcile_job, queue_health
 
 
-@override_settings(DURABLE_JOBS=True, OPENAI_API_KEY='')
+@override_settings(DURABLE_JOBS=True, RESEARCH_CODEX_BIN='')
 class JobOperationsTests(TransactionTestCase):
     def setUp(self):
         self.owner = get_user_model().objects.create_user(username='owner')

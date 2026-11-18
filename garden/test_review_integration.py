@@ -20,9 +20,12 @@ def payload():
         'text': json.dumps({'summary': 'Synthetic advice', 'warnings': [], 'uncertainties': [], 'tasks': []})}]}]}
 
 
-@override_settings(DURABLE_JOBS=True, OPENAI_API_KEY='synthetic')
+@override_settings(DURABLE_JOBS=True, RESEARCH_CODEX_BIN='synthetic')
 class IntegrationContractTests(TransactionTestCase):
     def setUp(self):
+        login = patch('garden.research.codex_research.check_login')
+        login.start()
+        self.addCleanup(login.stop)
         self.user = get_user_model().objects.create_user(username='integration')
         self.garden = Garden.objects.create(name='Synthetic')
         self.member = GardenMembership.objects.create(garden=self.garden, user=self.user, role='owner')
@@ -55,10 +58,10 @@ class IntegrationContractTests(TransactionTestCase):
                 close_old_connections()
         return run
 
-    @override_settings(OPENAI_API_KEY='')
+    @override_settings(RESEARCH_CODEX_BIN='')
     def test_missing_configuration_is_failed_without_network_and_allows_new_intent(self):
         job = self.queued()
-        with patch('garden.research.urllib.request.urlopen') as send:
+        with patch('garden.research.codex_research.execute') as send:
             self.assertFalse(jobs.execute(job, allow_external=True))
         send.assert_not_called()
         job.refresh_from_db()
@@ -189,14 +192,13 @@ class IntegrationContractTests(TransactionTestCase):
         self.assertFalse(self.item.proposals.exists())
 
     def test_expiry_during_request_preparation_never_reaches_urlopen(self):
-        import urllib.request
         job = self.queued()
-        original = urllib.request.Request
+        original = research._prepare_openai_request
         def prepare(*args, **kwargs):
             request = original(*args, **kwargs)
             jobs.BackgroundJob.objects.filter(pk=job.pk).update(lease_until=timezone.now()-timedelta(seconds=1))
             return request
-        with patch('garden.research.urllib.request.Request', side_effect=prepare), patch('garden.research.urllib.request.urlopen') as send:
+        with patch('garden.research._prepare_openai_request', side_effect=prepare), patch('garden.research.codex_research.execute') as send:
             self.assertFalse(jobs.execute(job, allow_external=True))
         send.assert_not_called()
         job.refresh_from_db()
@@ -204,14 +206,13 @@ class IntegrationContractTests(TransactionTestCase):
         self.assertIsNotNone(self.queued())
 
     def test_recovery_during_request_preparation_does_not_unlock_uncertain(self):
-        import urllib.request
         job = self.queued()
-        original = urllib.request.Request
+        original = research._prepare_openai_request
         def prepare(*args, **kwargs):
             request = original(*args, **kwargs)
             jobs.recover(self.garden, job.lease_until+timedelta(seconds=1))
             return request
-        with patch('garden.research.urllib.request.Request', side_effect=prepare), patch('garden.research.urllib.request.urlopen') as send:
+        with patch('garden.research._prepare_openai_request', side_effect=prepare), patch('garden.research.codex_research.execute') as send:
             self.assertFalse(jobs.execute(job, allow_external=True))
         send.assert_not_called()
         job.refresh_from_db()

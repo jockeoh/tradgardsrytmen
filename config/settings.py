@@ -61,8 +61,9 @@ X_FRAME_OPTIONS = "DENY"
 SILENCED_SYSTEM_CHECKS = ["security.W004", "security.W008"]
 
 DATA_DIR = Path(os.environ.get("TRADGARDSRYTMEN_DATA_DIR", BASE_DIR))
-OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY", "")
-OPENAI_MODEL = os.environ.get("TRADGARDSRYTMEN_OPENAI_MODEL", "gpt-5.6-luna")
+RESEARCH_CODEX_BIN = os.environ.get("TRADGARDSRYTMEN_CODEX_BIN", "")
+RESEARCH_CODEX_HOME = os.environ.get("TRADGARDSRYTMEN_CODEX_HOME", "")
+OPENAI_MODEL = os.environ.get("TRADGARDSRYTMEN_OPENAI_MODEL", "gpt-6.2-sol")
 VAPID_SUBJECT = os.environ.get("TRADGARDSRYTMEN_VAPID_SUBJECT", "mailto:admin@localhost")
 
 AUTH_USER_MODEL = "accounts.User"

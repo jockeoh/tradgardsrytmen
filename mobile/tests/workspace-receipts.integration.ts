@@ -20,7 +20,7 @@ test('F01 real Django: rejection unlocks safely; lost success and rejection resp
     TRADGARDSRYTMEN_DB_ENGINE: 'sqlite', TRADGARDSRYTMEN_DB_PATH: join(folder, 'test.sqlite3'),
     TRADGARDSRYTMEN_DATA_DIR: folder, TRADGARDSRYTMEN_DEBUG: '1',
     TRADGARDSRYTMEN_ALLOWED_HOSTS: 'testserver,localhost', TRADGARDSRYTMEN_PRIVATE_MOBILE_AUTH: '1',
-    TRADGARDSRYTMEN_DURABLE_JOBS: '0', TRADGARDSRYTMEN_NATIVE_PUSH: '0', OPENAI_API_KEY: '',
+    TRADGARDSRYTMEN_DURABLE_JOBS: '0', TRADGARDSRYTMEN_NATIVE_PUSH: '0', TRADGARDSRYTMEN_CODEX_BIN: '',
     TRADGARDSRYTMEN_OIDC_ISSUER: '', TRADGARDSRYTMEN_OIDC_JWKS_URL: '' };
   const prefix = `import sys
 def no_outbound(event, arguments):

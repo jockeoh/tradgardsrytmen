@@ -23,7 +23,7 @@ class DatabaseConfigTests(SimpleTestCase):
         self.assertEqual(config['OPTIONS']['sslmode'], 'verify-full')
 
 
-@override_settings(DURABLE_JOBS=True, OPENAI_API_KEY='synthetic-test-key')
+@override_settings(DURABLE_JOBS=True, RESEARCH_CODEX_BIN='synthetic-test-key')
 class JobTests(TransactionTestCase):
     def setUp(self):
         self.user = get_user_model().objects.create_user(username='owner')

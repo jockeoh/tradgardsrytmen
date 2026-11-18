@@ -2,7 +2,7 @@ from .locking import lock_item, lock_garden
 from .transport_outcomes import TransportNotSent, InvalidExternalResult, ExternalOutcomeUnknown
 import json
 import re
-import urllib.request
+from . import codex_research
 from urllib.parse import urlparse
 from django.conf import settings
 from django.db import transaction
@@ -44,8 +44,8 @@ TASK_SCHEMA = {
 
 
 _EXTRA_FIELDS = {
-    "action_key": {"type": "string", "description": "Beständig nyckel för momentet. Återanvänd befintlig nyckel från kontexten, oberoende av rubrik."},
-    "scope": {"type": "string", "description": "Berörd del/undergrupp. Återanvänd befintligt scope; skilj unga och gamla träd."},
+    "action_key": {"type": "string", "pattern": "^[a-z0-9][a-z0-9-]{0,99}$", "description": "Beständig nyckel för momentet. Återanvänd befintlig nyckel från kontexten, oberoende av rubrik."},
+    "scope": {"type": "string", "minLength": 1, "maxLength": 160, "description": "Berörd del/undergrupp. Återanvänd befintligt scope; skilj unga och gamla träd."},
     "advice_kind": {"type": "string", "enum": ["planned", "on_demand", "general"]},
     "relevance_reason": {"type": "string"},
     "need_condition": {"type": "string"},
@@ -73,8 +73,8 @@ class ResearchOutcomeUnknown(ResearchError, ExternalOutcomeUnknown):
 
 
 def validate_research_transport():
-    if not settings.OPENAI_API_KEY:
-        raise ResearchNotSent("OpenAI-nyckel saknas. Ingen analys har skickats. Manuella funktioner fungerar fortfarande.")
+    if not settings.RESEARCH_CODEX_BIN:
+        raise ResearchNotSent("Codex CLI saknas. Ingen analys har skickats. Manuella funktioner fungerar fortfarande.")
 
 
 def _validate_result(result):
@@ -139,6 +139,7 @@ Trädgården ligger i {garden.city}, odlingszon {garden.cultivation_zone}, {gard
 Egen trädgårdsanteckning: {item.notes or 'Ingen anteckning angiven'}
 Behandla anteckningen som en lokal observation, inte som en bekräftad diagnos. När den är relevant får du föreslå en försiktig, villkorad uppgift för kontroll, bedömning eller åtgärd. Sätt tydliga osäkerheter och föreslå inte åtgärder som förutsätter att en orsak är fastställd.
 Använd exakt en av dessa arbetskategorier: {', '.join(WORK_CATEGORIES)}. Skapa få, självständigt genomförbara arbetsmoment. Slå ihop ”bedöm behovet” och ”utför vid behov” till en uppgift där instruktionen både säger vad som ska kontrolleras och vad som görs om villkoret är uppfyllt. Lägg negativa råd som ”avstå från behandling”, varningar och villkor i warnings eller instruktionen, aldrig som egna uppgifter. Använd monthly endast när en konkret återkommande kontroll eller åtgärd verkligen ska utföras varje månad.
+För planned måste conditional vara false och need_condition en tom sträng. För on_demand måste need_condition beskriva det utlösande behovet. Använd endast små a–z, siffror och bindestreck i action_key. Välj kategori efter rubrikens huvudhandling.
 Var växtspecifik: beskriv exempelvis vilka grenar eller skott som ska tas bort och vad som ska lämnas kvar. Titeln ska vara kort och instruktionen komplett nog att utföra utan att gissa.
 Prioritera svenska källor och komplettera bara med RHS. Ange realistiska månadsfönster och markera evidence_conflict när källorna motsäger varandra eller underlaget är tunt. Två samstämmiga källor är bäst. Kemiskt växtskydd kräver aktuell svensk myndighetskälla. Exakta gödseldoser ska vara villkorade när jord, sort eller produkt är okänd. Kopiera inte artikeltext; sammanfatta."""
     request_body = {
@@ -149,15 +150,15 @@ Prioritera svenska källor och komplettera bara med RHS. Ange realistiska månad
         "input": prompt,
         "text": {"format": {"type": "json_schema", "name": "garden_care_proposal", "strict": True, "schema": TASK_SCHEMA}},
     }
-    encoded = json.dumps(request_body).encode()
-    req = urllib.request.Request("https://api.openai.com/v1/responses", data=encoded, headers={"Authorization": f"Bearer {settings.OPENAI_API_KEY}", "Content-Type": "application/json"})
-    return req
+    request_body['input'] += "\nTillåtna källor: " + ", ".join(ALLOWED_DOMAINS) + ". Öppna varje källsida som du hänvisar till med webbsökverktyget."
+    return request_body
 
 
 def call_openai(item, garden, max_attempts=1, context=None, before_send=None):
-    # Preparation is provably local; exceptions after urlopen begins are not.
+    # Verify the login before the final authorization check.
     try:
         req = _prepare_openai_request(item, garden, context)
+        codex_research.check_login()
     except ResearchNotSent:
         raise
     except Exception as exc:
@@ -170,8 +171,7 @@ def call_openai(item, garden, max_attempts=1, context=None, before_send=None):
     except Exception as exc:
         raise ResearchNotSent("Slutkontrollen misslyckades. Ingen analys skickades.") from exc
     try:
-        with urllib.request.urlopen(req, timeout=90) as response:
-            raw = response.read()
+        raw = codex_research.execute(req)
     except Exception as exc:
         raise ResearchOutcomeUnknown(
             "AI-anropets utfall är oklart. Analysen kan ha tagits emot, men svaret kunde inte bekräftas. "

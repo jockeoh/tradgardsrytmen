@@ -28,7 +28,7 @@ test("real Django: accounts, process death, history, conflict, revocation and ex
     TRADGARDSRYTMEN_DB_PATH: join(folder, "test.sqlite3"),
     TRADGARDSRYTMEN_PRIVATE_MOBILE_AUTH: "1",
     TRADGARDSRYTMEN_DEBUG: "1",
-    OPENAI_API_KEY: "",
+    TRADGARDSRYTMEN_CODEX_BIN: "",
     DJANGO_SETTINGS_MODULE: "config.settings",
     HOME_TEST_PASSWORD: randomUUID(),
   };

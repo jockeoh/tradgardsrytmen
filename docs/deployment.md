@@ -38,7 +38,9 @@ activation have separate gates and are not prerequisites for private SQLite.
 
 ## Optional integrations
 
-Set `OPENAI_API_KEY` to enable care research. Saving a plant does not start research. Explicitly requesting new advice sends plant details, notes, garden profile and care history to the configured research service. Suggestions remain pending until reviewed. With no key, manual features continue to work. `TRADGARDSRYTMEN_OPENAI_MODEL` selects the model.
+Set `TRADGARDSRYTMEN_CODEX_BIN` to an absolute Codex CLI executable accessible inside both service sandboxes. With `ProtectHome=true`, install the executable and its dependencies outside user home directories. Set `TRADGARDSRYTMEN_CODEX_HOME` to a private directory writable by the service account under its data directory. Sign in there with the intended ChatGPT subscription as the service identity and check `codex login status` with that same environment. The worker checks for ChatGPT login before each model call and passes only its home, CLI home, executable path and locale to the CLI. Remove legacy API credentials from the service environment. `TRADGARDSRYTMEN_OPENAI_MODEL` selects the model.
+
+Explicit requests send plant details, notes, garden profile and care history. Search is restricted to the configured horticultural domains. The proposal records source URLs observed in the CLI search events and stays pending until reviewed.
 
 Web Push requires a secure browser context and permission on each device. Configure `TRADGARDSRYTMEN_VAPID_SUBJECT` with your own contact address. The application creates a private signing key in the data directory; never commit it. iPhone notifications require installation on the home screen.
 
