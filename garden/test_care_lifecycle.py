@@ -203,6 +203,17 @@ class CareLifecycleTests(TenantTestCase):
         self.assertEqual(self.client.get('/api/month/?month=13').status_code,400)
         self.assertEqual(len(dashboard_for(self.tenant_garden)['due']),1)
 
+    def test_autumn_approval_shows_next_spring_in_upcoming_and_the_calendar(self, today):
+        today.return_value = date(2026, 11, 18)
+        proposal, rule = self.proposal(start_month=3, end_month=4)
+        self.approve(proposal, rule)
+        board = self.client.get('/api/bootstrap/').json()['tasks']
+        self.assertEqual(board['due'], [])
+        self.assertEqual([t['start'] for t in board['later']], ['2027-03-01'])
+        spring = self.client.get('/api/month/?year=2027&month=3').json()
+        self.assertEqual(spring['planned'][0]['id'], board['later'][0]['id'])
+        self.assertFalse(dashboard_for(self.tenant_garden)['later'].exists())
+
     def test_manual_edit_and_approval_share_validation(self, _):
         proposal, rule=self.proposal()
         url=f'/api/rules/{rule.pk}/'

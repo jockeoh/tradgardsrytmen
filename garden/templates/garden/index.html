@@ -75,6 +75,7 @@
       </section>
       <section class="view hidden" id="view-year" aria-label="Årshjulet">
         <div class="page-heading"><div><p class="eyebrow">EN TRÄDGÅRD, FYRA ÅRSTIDER</p><h2>Ett år att växa med.</h2><p class="lead">Från första knopp till vintervila. Hitta din rytm, månad för månad.</p></div><div class="year-selector"><button class="icon-button" data-year-step="-1" aria-label="Föregående år"><svg class="icon"><use href="#i-chevron-left"/></svg></button><label for="selected-year" class="sr-only">År</label><input id="selected-year" type="number" min="1900" max="9999"><button class="icon-button" data-year-step="1" aria-label="Nästa år"><svg class="icon"><use href="#i-chevron-right"/></svg></button></div></div>
+        <div id="year-next" hidden></div>
         <label class="mobile-month-selector">Månad<select id="selected-month"></select></label><div class="year-grid" id="year-grid"></div><section class="month-detail panel" id="month-detail" aria-live="polite"></section>
       </section>
       <section class="view hidden" id="view-plants" aria-label="Min trädgård">
@@ -108,6 +109,6 @@
   <dialog id="form-dialog" class="sheet-dialog" aria-labelledby="form-title"><form id="dynamic-form"><button class="dialog-close" type="button" data-close aria-label="Stäng formulär"><svg class="icon"><use href="#i-close"/></svg></button><div id="form-content"></div></form></dialog>
   <dialog id="detail-dialog" class="detail-dialog" aria-label="Trädgårdsdetaljer"><button class="dialog-close" type="button" data-close-detail aria-label="Stäng detaljer"><svg class="icon"><use href="#i-close"/></svg></button><div id="detail-content"></div></dialog>
   <div id="toast" class="toast" role="status" aria-live="polite"></div>
-  <script src="{% static 'garden/app.js' %}?v=20261118shared1" defer></script>
+  <script src="{% static 'garden/app.js' %}?v=20261118calendar1" defer></script>
 </body>
 </html>

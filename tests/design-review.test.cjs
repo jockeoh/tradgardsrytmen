@@ -32,6 +32,16 @@ test('empty current list stays neutral after completing a manual task', () => {
   assert.doesNotMatch(get('#task-groups').innerHTML,/Du är i fas/);
 });
 
+test('an empty current list links to the next work across the year boundary', () => {
+  const elements = new Map();
+  const get = key => {if(!elements.has(key)) elements.set(key,{classList:{toggle(){}},textContent:'',innerHTML:''}); return elements.get(key);};
+  const c = runtime({document:{querySelector:get,querySelectorAll:()=>[]}});
+  vm.runInContext(`state.data={items:[{}],today:'2026-11-18'};
+    renderTasks({due:[],overdue:[],later:[{title:'Inventera bokhäcken',start:'2027-03-01',end:'2027-04-30'}]});`,c);
+  assert.match(get('#task-groups').innerHTML,/Inventera bokhäcken/);
+  assert.match(get('#task-groups').innerHTML,/data-calendar-start="2027-03-01">Visa mars 2027 i årshjulet/);
+});
+
 test('focus restoration follows identity, not old row position', () => {
   const old = {hasAttribute:n=>n==='data-shopping-toggle',getAttribute:()=> 'second'};
   let focused;

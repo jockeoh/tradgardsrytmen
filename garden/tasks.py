@@ -163,15 +163,18 @@ def visible_pending(garden, day=None):
     ).filter(Q(manual=True) | Q(window_end__gte=day)).select_related("item", "item__area", "rule", "work")
 
 
-def dashboard_for(garden, day=None):
+def dashboard_for(garden, day=None, *, full_calendar=False):
     day = day or timezone.localdate()
     first = day.replace(day=1)
     last = month_end(day.year, day.month)
     pending = visible_pending(garden, day)
+    later = pending.filter(window_start__gt=day).order_by("window_start", "window_end", "title", "pk")
+    if not full_calendar:
+        later = later.filter(window_start__lte=add_months(first, 3))
     return {
         "overdue": pending.filter(manual=True, window_end__lt=day),
         "due": pending.filter(window_start__lte=day, window_end__gte=day),
-        "later": pending.filter(window_start__gt=day, window_start__lte=add_months(first, 3)),
+        "later": later,
         "completed": TaskOccurrence.objects.filter(item__garden=garden, status="completed", completed_at__date__gte=first, completed_at__date__lte=last).count(),
     }
 

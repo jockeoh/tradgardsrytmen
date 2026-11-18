@@ -137,6 +137,11 @@ function taskRow(task) {
   </div>`;
 }
 
+function calendarLink(task) {
+  const month = new Date(`${task.start}T12:00:00`).toLocaleDateString("sv-SE", {month:"long", year:"numeric"});
+  return `<button class="button secondary" data-calendar-start="${escapeHtml(task.start)}">Visa ${escapeHtml(month)} i årshjulet</button>`;
+}
+
 function renderTasks(groups) {
   $$("[data-task-view]").forEach(button => {button.classList.toggle("active", button.dataset.taskView === state.taskView);button.setAttribute("aria-pressed", String(button.dataset.taskView === state.taskView));});
   $$("[data-task-period]").forEach(button => {button.classList.toggle("active", button.dataset.taskPeriod === state.taskPeriod);button.setAttribute("aria-pressed", String(button.dataset.taskPeriod === state.taskPeriod));});
@@ -151,6 +156,10 @@ function renderTasks(groups) {
     if (!state.data.items.length) {
       title = "Allt börjar med en växt."; copy = "Lägg till din första växt, så kan vi börja bygga din trädgårdsrytm tillsammans.";
       action = `<button class="button" data-new-item>${icon('plus', true)}Lägg till din första växt</button>`;
+    } else if (groups.later.length) {
+      const next = groups.later[0];
+      copy = `Nästa planerade arbete är ${escapeHtml(next.title)} · ${escapeHtml(taskWindow(next))}.`;
+      action = calendarLink(next);
     } else if (state.taskPeriod === "upcoming") {
       title = "Luft i kalendern."; copy = "Här samlas dina kommande uppgifter när det finns en plan. Årshjulet visar också det du redan har gjort.";
       action = '<button class="button secondary" data-view="year">Utforska årshjulet</button>';
@@ -160,7 +169,8 @@ function renderTasks(groups) {
   }
   const categoryIcons = {"Vattna":"water", "Beskära och binda upp":"scissors", "Kontrollera":"search", "Gödsla":"sprout", "Jord och ogräs":"bed", "Skörda":"bag", "Övrigt":"leaf"};
   const key = t => state.taskView === "work" ? t.category : t.area?.name || "Inte placerat";
-  const sorted = [...tasks].sort((a,b) => a.end.localeCompare(b.end) || a.title.localeCompare(b.title, "sv"));
+  const sortDate = state.taskPeriod === "upcoming" ? "start" : "end";
+  const sorted = [...tasks].sort((a,b) => a[sortDate].localeCompare(b[sortDate]) || a.title.localeCompare(b.title, "sv"));
   const keys = [...new Set(sorted.map(key))];
   $("#task-groups").innerHTML = keys.map(k => {
     const rows = sorted.filter(t => key(t) === k);
@@ -175,6 +185,8 @@ function adviceMarkup(r) {
 
 async function loadMonth() {
   const year = state.selectedYear, month = state.selectedMonth;
+  const yearHint = $("#year-next");
+  if (yearHint) yearHint.hidden = true;
   $("#month-detail").setAttribute("aria-busy", "true");
   let data;
   try { data = await api(`/api/month/?year=${year}&month=${month}`); }
@@ -198,7 +210,16 @@ async function loadMonth() {
     }
   });
   const name = state.data.year.find(row => row.month === month).name;
-  $("#month-detail").innerHTML = `<div class="month-detail-heading"><div><p class="eyebrow">DIN PLAN & HISTORIK</p><h3>${escapeHtml(name)} ${year}</h3></div>${icon(seasonFor(month).icon)}</div><h4>Planerade uppgifter</h4>${data.planned.length ? data.planned.map(taskRow).join('') : '<p class="muted">Inga planerade uppgifter den här månaden.</p>'}<h4>Det du har gjort</h4>${data.history.length ? data.history.map(taskRow).join('') : '<p class="muted">När du avslutar en uppgift hittar du den här.</p>'}`;
+  const selectedPeriod = `${year}-${String(month).padStart(2,'0')}`;
+  const nextTask = state.data.tasks.later.find(task => task.start.slice(0,7) > selectedPeriod);
+  const emptyYear = !data.counts.some(row => row.open);
+  if (yearHint && emptyYear && nextTask) {
+    yearHint.innerHTML = `<p>Inga uppgifter är planerade för ${year}.</p>${calendarLink(nextTask)}`;
+    yearHint.hidden = false;
+  }
+  const emptyMonth = '<p class="muted">Inga planerade uppgifter den här månaden.</p>' +
+    (nextTask && (!emptyYear || !yearHint) ? calendarLink(nextTask) : '');
+  $("#month-detail").innerHTML = `<div class="month-detail-heading"><div><p class="eyebrow">DIN PLAN & HISTORIK</p><h3>${escapeHtml(name)} ${year}</h3></div>${icon(seasonFor(month).icon)}</div><h4>Planerade uppgifter</h4>${data.planned.length ? data.planned.map(taskRow).join('') : emptyMonth}<h4>Det du har gjort</h4>${data.history.length ? data.history.map(taskRow).join('') : '<p class="muted">När du avslutar en uppgift hittar du den här.</p>'}`;
 }
 
 async function openReview() {
@@ -329,7 +350,7 @@ function render(data) {
   $("#need-list").innerHTML = data.advice.length ? data.advice.map(adviceMarkup).join("") : emptyState("Omtanke när den behövs.", "Här samlas granskade råd som du själv aktiverar när behovet uppstår.", '<button class="button secondary" data-view="plants">Se dina växters skötselråd</button>', 'water');
   $(".review-link").classList.toggle('hidden', !data.pending_proposals);
   $("#review-count").textContent = `${data.pending_proposals} förslag väntar på din granskning`;
-  const next = [...data.tasks.overdue, ...data.tasks.due, ...data.tasks.later].sort((a,b) => a.end.localeCompare(b.end))[0];
+  const next = data.tasks.overdue[0] || data.tasks.due[0] || data.tasks.later[0];
   state.nextTask = next?.id;
   $("#hero-next").textContent = next ? `${next.title} · ${next.item.name} · ${taskWindow(next)}` : data.items.length ? "Skapa en egen uppgift eller öppna en växt för att börja planera skötseln." : "Lägg till din första växt och börja din plan.";
   $("#hero-action").innerHTML = `${next ? 'Visa nästa uppgift' : data.items.length ? 'Planera skötsel' : 'Lägg till en växt'}${icon('arrow-right')}`;
@@ -724,6 +745,14 @@ document.addEventListener("click", async event => {
   const filter = event.target.closest('[data-plant-filter]'); if (filter) {state.plantFilter = filter.dataset.plantFilter;renderPlants();return;}
   if (event.target.closest('[data-reset-plants]')) {state.plantQuery = '';state.plantFilter = '';$('#plant-search').value = '';renderPlants();return;}
   if (event.target.closest('[data-current-year]')) {state.selectedMonth = Number(state.data.today.slice(5,7));state.selectedYear = Number(state.data.today.slice(0,4));setView('year');return;}
+  const calendarStart = event.target.closest('[data-calendar-start]');
+  if (calendarStart) {
+    const [year, month] = calendarStart.dataset.calendarStart.split('-').map(Number);
+    state.selectedYear = year;
+    state.selectedMonth = month;
+    setView('year');
+    return;
+  }
   const yearStep = event.target.closest('[data-year-step]'); if (yearStep) {state.selectedYear = Math.min(9999, Math.max(1900, state.selectedYear + Number(yearStep.dataset.yearStep)));await loadMonth();return;}
   const shape = event.target.closest('[data-soil-shape]'); if (shape) {setSoilShape(shape.dataset.soilShape);return;}
   const remove = event.target.closest('[data-shopping-remove]'); if (remove) {

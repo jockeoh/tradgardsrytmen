@@ -148,7 +148,7 @@ def service_worker(request):
 @require_GET
 def api_bootstrap(request):
     day = timezone.localdate()
-    board = dashboard_for(request.garden, day)
+    board = dashboard_for(request.garden, day, full_calendar=True)
     completed = board.pop("completed")
     task_groups = {key: [_task_json(t) for t in value] for key, value in board.items()}
     total = completed + sum(len(v) for v in task_groups.values())
