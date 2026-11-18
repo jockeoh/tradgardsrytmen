@@ -43,7 +43,7 @@ def execute(body):
             cmd.extend(['-c', f'{key}={json.dumps(value, ensure_ascii=False)}'])
         cmd.extend(['-c', 'mcp_servers={}', '-'])
         response = subprocess.run(cmd, input=body['input'], text=True, stdout=subprocess.PIPE,
-                                  stderr=subprocess.DEVNULL, cwd=tmp, env=environment(), timeout=90, check=True)
+                                  stderr=subprocess.DEVNULL, cwd=tmp, env=environment(), timeout=155, check=True)
         sources = {}
         for line in response.stdout.splitlines():
             event = json.loads(line)

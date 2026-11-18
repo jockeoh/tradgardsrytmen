@@ -251,7 +251,7 @@ def _persist_research_proposal(item, payload, context):
     )
     for url, source in consulted.items():
         domain = _domain(url)
-        SourceReference.objects.create(plan=plan, title=source.get("title") or domain, url=url, domain=domain, summary=f"Källa använd i skötselanalysen för {item.name}.", is_swedish_authority=domain in SWEDISH_AUTHORITY_DOMAINS)
+        SourceReference.objects.create(plan=plan, title=(source.get("title") or domain)[:SourceReference._meta.get_field("title").max_length], url=url, domain=domain, summary=f"Källa använd i skötselanalysen för {item.name}.", is_swedish_authority=domain in SWEDISH_AUTHORITY_DOMAINS)
     for task in result["tasks"]:
         validated = [url.rstrip("/") for url in task["source_urls"] if url.rstrip("/") in consulted]
         unique_domains = {_domain(url) for url in validated}
