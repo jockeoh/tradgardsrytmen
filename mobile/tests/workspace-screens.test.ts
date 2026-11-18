@@ -130,20 +130,21 @@ for(const kind of ['plant','profile','area','rule'])test(`F02 ${kind} draft surv
 
 test('F03 review selections and explanations survive navigation and a renewed context token',async()=>{
  const data=base();data.proposals=[pendingPlan()];
+ data.proposals[0].rules[0].identity_source_id='2';
  const calls:Request[]=[];await mount(data,r=>{calls.push(r);return {ok:true};});
  try{
   await press('Skötselförslag (1)');await press('✓ Valt råd');
-  await field('Förklara överlapp eller koppling till tidigare arbete','Min omsorgsfulla förklaring');
+  await field('Beskriv kopplingen till tidigare arbete','Min omsorgsfulla förklaring');
   await press('Redigera');await closeEditor();
   assert.ok(root.root.findAll(n=>n.type==='button').some(n=>n.props.accessibilityLabel==='Välj råd'));
-  assert.equal(inputValue('Förklara överlapp eller koppling till tidigare arbete'),'Min omsorgsfulla förklaring');
+  assert.equal(inputValue('Beskriv kopplingen till tidigare arbete'),'Min omsorgsfulla förklaring');
   await press('Överblick');await press('Skötselförslag (1)');
   assert.ok(root.root.findAll(n=>n.type==='button').some(n=>n.props.accessibilityLabel==='Välj råd'));
-  assert.equal(inputValue('Förklara överlapp eller koppling till tidigare arbete'),'Min omsorgsfulla förklaring');
+  assert.equal(inputValue('Beskriv kopplingen till tidigare arbete'),'Min omsorgsfulla förklaring');
   data.context='renewed-grant';
   await press('Uppdatera från trädgården');
   assert.ok(root.root.findAll(n=>n.type==='button').some(n=>n.props.accessibilityLabel==='Välj råd'));
-  assert.equal(inputValue('Förklara överlapp eller koppling till tidigare arbete'),'Min omsorgsfulla förklaring');
+  assert.equal(inputValue('Beskriv kopplingen till tidigare arbete'),'Min omsorgsfulla förklaring');
   assert.doesNotMatch(text(),/Dina tidigare rådval och förklaringar behöver granskas på nytt/);
   await press('Godkänn valda råd');await press('Kasta utkastet och öppna nytt');await press('Bekräfta och spara');
   assert.equal(calls[0].body!.context,'renewed-grant');
@@ -154,6 +155,7 @@ test('F03 review selections and explanations survive navigation and a renewed co
 
 test('F04 conflict opens the latest proposal and renewed approval uses its revision and token',async()=>{
  const data=base();data.proposals=[pendingPlan(careRule('1','Gammalt råd'))];
+ data.proposals[0].rules[0].identity_source_id='2';
  const calls:Request[]=[];
  const session=await mount(data,req=>{
   calls.push(req);
@@ -165,14 +167,14 @@ test('F04 conflict opens the latest proposal and renewed approval uses its revis
  });
  try{
   await press('Skötselförslag (1)');await press('✓ Valt råd');
-  await field('Förklara överlapp eller koppling till tidigare arbete','Förklaring till det gamla underlaget');
+  await field('Beskriv kopplingen till tidigare arbete','Förklaring till det gamla underlaget');
   await press('Godkänn valda råd');await press('Bekräfta och spara');
   await press('Granska mot senaste underlaget');
   assert.match(text(),/Nytt råd på servern/);assert.doesNotMatch(text(),/Gammalt råd/);
   assert.match(text(),/Granska råden och bekräfta ditt val igen/);
   assert.equal(calls.length,1);assert.equal(session.outcome(session.scope(),'workspace'),undefined);
-  assert.equal(inputValue('Förklara överlapp eller koppling till tidigare arbete'),'');
-  await field('Förklara överlapp eller koppling till tidigare arbete','Ny förklaring efter granskning');
+  assert.equal(inputValue('Beskriv kopplingen till tidigare arbete'),'');
+  await field('Beskriv kopplingen till tidigare arbete','Ny förklaring efter granskning');
   await press('Godkänn valda råd');await press('Bekräfta och spara');
   assert.equal(calls.length,2);assert.equal(calls[1].body!.revision,'v2');
   assert.equal((calls[1].body!.values as any).comparison_token,'comparison2');
